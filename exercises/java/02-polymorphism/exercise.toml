@@ -1,0 +1,96 @@
+title = "instanceof chains → polymorphism"
+difficulty = 2
+files = ["Payroll.java", "Employee.java", "Salaried.java", "Hourly.java", "Contractor.java"]
+concepts = ["interfaces", "polymorphism", "records", "default methods", "dynamic dispatch"]
+
+brief = """
+`Payroll` pays three kinds of staff. `monthlyPay` and `payslip` both walk an
+`instanceof` / cast chain to figure out what they were handed, and both end with an
+`IllegalArgumentException` for "something else". The employee classes are bare bags of
+public fields; all the knowledge about them lives in `Payroll`.
+
+Put the knowledge where it belongs:
+
+- create an `Employee` interface (in a new file, `Employee.java`)
+- `Salaried`, `Hourly` and `Contractor` implement it, each computing its *own* pay
+- shared formatting (`payslip`) becomes a `default` method on the interface
+- `Payroll` just delegates. No `instanceof`, no casts, no "unknown type" exception
+- bonus: turn the three classes into `record`s
+
+The tests construct employees with `new Hourly("Bo", 20.0, 170)` etc. and call the static
+`Payroll` methods.
+"""
+
+lesson = """
+**Interfaces** declare what something can do:
+
+    public interface Shape {
+        double area();
+        default String describe() { return "area " + area(); }   // shared code
+    }
+
+A class *implements* the interface by providing the methods:
+
+    public record Circle(double r) implements Shape {
+        public double area() { return Math.PI * r * r; }
+    }
+
+**Polymorphism / dynamic dispatch.** Given a `Shape s`, calling `s.area()` runs *the right
+version for whatever s really is*, decided at runtime. That's exactly what the `instanceof`
+chain was doing by hand.
+
+**Records** are concise immutable data classes. `record Point(int x, int y) {}` gives you the
+constructor, accessors `x()` and `y()`, `equals`, `hashCode` and `toString`. A record's
+accessor `name()` can satisfy an interface method `String name()` automatically.
+
+**Generics wildcard.** `List<? extends Employee>` means "a list of some kind of Employee", so
+it accepts a `List<Salaried>` as well as a `List<Employee>`.
+"""
+
+hints = [
+    "Create `Employee.java`: `public interface Employee { String name(); String kind(); double monthlyPay(); }`.",
+    "Make each class implement it. As a record: `public record Salaried(String name, double annualSalary) implements Employee { public String kind() { return \"salaried\"; } public double monthlyPay() { return annualSalary / 12; } }`. The record's `name()` accessor satisfies the interface.",
+    "Move the overtime rule into `Hourly.monthlyPay()`, ideally with constants for 160 and 1.5. Contractor's pay is just `invoiceTotal`.",
+    "Add `default String payslip() { return String.format(\"%s (%s): $%.2f\", name(), kind(), monthlyPay()); }` to the interface. Then Payroll's methods take `Employee` and are one line each; `total` can be `staff.stream().mapToDouble(Employee::monthlyPay).sum()`.",
+]
+
+debrief = """
+Before: `Payroll` knew every employee type intimately, and each new type meant editing two
+`instanceof` chains. After: each type knows its own pay, and `Payroll` knows nothing but the
+interface. The compiler now guarantees every employee *has* a `monthlyPay()`, so the
+"unknown employee type" exception can never happen.
+
+This is the "replace conditional with polymorphism" refactoring from Martin Fowler's
+*Refactoring*. You've now done it in JavaScript, Go, Rust and Java. Same idea, four syntaxes.
+"""
+
+[[checks]]
+type = "forbid"
+pattern = '\binstanceof\b'
+goal = "No instanceof checks"
+message = "Let each type implement its own behaviour:"
+
+[[checks]]
+type = "forbid"
+pattern = '\(\s*(Salaried|Hourly|Contractor)\s*\)\s*\w'
+goal = "No casts"
+message = "Casting means you lost the type; an interface keeps it:"
+
+[[checks]]
+type = "require"
+pattern = 'interface\s+Employee'
+goal = "There is an Employee interface"
+message = "Create Employee.java with an interface."
+
+[[checks]]
+type = "require"
+pattern = 'implements\s+Employee'
+min = 3
+goal = "All three staff types implement Employee"
+message = "Add `implements Employee` to each."
+
+[[checks]]
+type = "forbid"
+pattern = 'unknown employee type'
+goal = "No 'unknown type' fallback"
+message = "With an interface the compiler rules it out:"

@@ -1,0 +1,101 @@
+title = "Loops → streams, POJOs → records"
+difficulty = 3
+files = ["SalesReport.java", "Sale.java"]
+concepts = ["streams", "lambdas", "method references", "collectors", "records", "comparators"]
+
+brief = """
+`SalesReport` answers four questions about a list of sales. Each answer is a hand-written
+loop with temporary maps, null checks, an anonymous `Comparator` class and manual
+de-duplication. `Sale` is a 25-line class whose only job is to hold three values.
+
+Modernize both:
+
+- `Sale` becomes a one-line `record`
+- each `SalesReport` method becomes a single stream pipeline: `filter`, `map`, `sorted`,
+  `distinct`, `limit`, and `Collectors.groupingBy` for the totals
+- use method references (`Sale::region`) and lambdas instead of anonymous classes
+
+The tests only build `Sale`s with `new Sale(region, product, amount)`.
+"""
+
+lesson = """
+**Records**: `public record Sale(String region, String product, double amount) {}` replaces
+the fields, constructor and getters. Accessors are named after the fields: `sale.region()`.
+
+**Streams** process collections as pipelines:
+
+    List<String> names = people.stream()
+        .filter(p -> p.age() >= 18)      // keep some
+        .map(Person::name)               // transform (method reference)
+        .sorted()                        // order
+        .distinct()                      // remove duplicates
+        .limit(3)                        // take the first n
+        .toList();                       // collect
+
+**Primitive streams**: `mapToDouble(Sale::amount)` gives a `DoubleStream` with `sum()` and
+`average()` (an `OptionalDouble`, so `.orElse(0)` covers the empty case).
+
+**Collectors.groupingBy** builds maps:
+
+    Map<String, Double> byCity = orders.stream()
+        .collect(Collectors.groupingBy(Order::city, TreeMap::new,
+                                       Collectors.summingDouble(Order::total)));
+
+The middle argument picks the map type. `TreeMap` keeps keys sorted.
+
+**Comparators compose**:
+`Map.Entry.<String, Double>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey())`.
+"""
+
+hints = [
+    "Start with `Sale.java`: replace everything with `public record Sale(String region, String product, double amount) {}`. The compiler will flag every `getRegion()` → change them to `region()`.",
+    "`regionsSelling`: `sales.stream().filter(s -> s.product().equals(product)).map(Sale::region).distinct().sorted().toList()`. `averageAbove`: `mapToDouble(Sale::amount).filter(a -> a > threshold).average().orElse(0)`.",
+    "`totalByRegion`: `sales.stream().collect(Collectors.groupingBy(Sale::region, TreeMap::new, Collectors.summingDouble(Sale::amount)))`. Import `java.util.stream.Collectors`.",
+    "`topProducts`: group by product into a map of totals, then stream its `entrySet()`, `.sorted(Map.Entry.<String, Double>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))`, `.limit(n)`, `.map(Map.Entry::getKey)`, `.toList()`.",
+]
+
+debrief = """
+Each method is now one statement that reads like the question it answers: "group sales by
+region and sum the amounts". No temporary variables to track, no null checks, no off-by-one
+in `i < entries.size() && i < n`.
+
+Streams are Java's version of iterators/map/filter/reduce. You've now seen the same pipeline
+idea in JavaScript arrays, Rust iterators and Java streams. Learn it once, use it everywhere.
+"""
+
+[[checks]]
+type = "require"
+pattern = 'record\s+Sale\s*\('
+goal = "Sale is a record"
+message = "Replace the class with `public record Sale(...) {}`."
+
+[[checks]]
+type = "forbid"
+pattern = '\bfor\s*\(|\bwhile\s*\('
+goal = "No loops in the report"
+message = "Express each method as a stream pipeline:"
+
+[[checks]]
+type = "require"
+pattern = '\.stream\(\)'
+min = 4
+goal = "Each report method uses a stream"
+message = "Use `.stream()` in each of the four methods."
+
+[[checks]]
+type = "require"
+pattern = 'groupingBy'
+goal = "Totals use Collectors.groupingBy"
+message = "Group and sum with Collectors.groupingBy(..., summingDouble(...))."
+
+[[checks]]
+type = "forbid"
+pattern = 'new\s+Comparator\s*<'
+goal = "No anonymous Comparator classes"
+message = "Compose comparators instead:"
+
+[[checks]]
+type = "forbid"
+pattern = '==\s*null|!=\s*null|containsKey'
+goal = "No manual null/containsKey checks"
+message = "Collectors handle missing keys:"

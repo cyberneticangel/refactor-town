@@ -1,0 +1,103 @@
+title = "Buffer overflows → bounded writes"
+difficulty = 3
+starter_tests_pass = false
+files = ["receipt.c"]
+concepts = ["buffers", "buffer overflows", "snprintf", "variadic functions", "struct as a little object"]
+
+brief = """
+**This one starts with failing tests.** Run `check` and read AddressSanitizer's report.
+
+`format_receipt` builds receipt text into a caller-provided buffer of `out_size` bytes, and
+then ignores `out_size` completely. `strcpy`, `strcat` and `sprintf` write as much as they
+like: a small buffer gets overrun, and a long item name overflows the 48-byte `line` scratch
+buffer too. This is the classic **buffer overflow**, the bug behind decades of security holes.
+
+Make every write bounded:
+
+- never use `strcpy`, `strcat` or `sprintf`
+- write with `snprintf`/`vsnprintf`, tracking how much space is left
+- the result must be truncated cleanly and always NUL-terminated; `out_size == 0` writes nothing
+- tip: a tiny "writer" struct (buffer, size, length) with an `append(writer, fmt, ...)` helper
+  keeps the main function readable
+"""
+
+lesson = """
+**Buffers** are fixed-size arrays. C will happily write past their end: no error, just
+corrupted neighbouring memory. Attackers love that.
+
+**snprintf** is the bounded version of sprintf:
+
+    int wanted = snprintf(buf, size, "%s=%d", key, value);
+
+It writes at most `size - 1` characters plus a NUL, and returns how many characters it
+*wanted* to write. If `wanted >= size`, the output was truncated.
+
+**Appending safely** means tracking where you are and how much room is left:
+
+    size_t room = size - len;
+    int wanted = snprintf(buf + len, room, "...");
+    len += (wanted < room) ? wanted : room - 1;   /* advance only by what fit */
+
+**Variadic functions** take a variable number of arguments like printf does. Forward them
+to `vsnprintf` with `<stdarg.h>`:
+
+    static void append(Writer *w, const char *fmt, ...) {
+        va_list args;
+        va_start(args, fmt);
+        vsnprintf(w->buf + w->len, w->size - w->len, fmt, args);
+        va_end(args);
+    }
+
+**A struct as an object.** Bundling `buf`, `size` and `len` in a `Writer` and only touching
+it through functions is how C programmers get encapsulation.
+"""
+
+hints = [
+    "Read the ASan report: 'stack-buffer-overflow' and the line number tell you which write went past which buffer. There are two: `line` (long names) and `out` (small buffers).",
+    "Drop the `line` scratch buffer entirely. Write straight into `out` instead. Define `typedef struct { char *buf; size_t size; size_t len; } Writer;` and initialise it with `out`, `out_size`, 0, plus `out[0] = '\\0'` when size > 0.",
+    "Write `static void append(Writer *w, const char *fmt, ...)` using `va_list` + `vsnprintf(w->buf + w->len, w->size - w->len, fmt, args)`. Return early if `w->size == 0`. Advance `w->len` by `wanted` if it fit, else by `room - 1` (the buffer is now full).",
+    "Then format_receipt is just: `append(&w, \"RECEIPT\\n\");`, a loop that appends each line with `\"%2d x %-12s $%4d.%02d\\n\"`, and a final TOTAL append. A small `append_money` helper removes the duplicated dollars/cents format.",
+]
+
+debrief = """
+`out_size` used to be decoration. Now it's enforced on every write. Bounded APIs (and
+languages that bounds-check for you, like Rust, Go, Java, Python and JavaScript) exist because
+this exact mistake has cost billions.
+
+The `Writer` struct is worth remembering: a tiny bit of state plus a couple of functions that
+are the only way to touch it. That's encapsulation, in a language with no classes.
+
+You've finished the C track, and you've now seen how low-level languages make you manage
+what high-level ones manage for you. That understanding makes you better in all of them.
+"""
+
+[[checks]]
+type = "forbid"
+pattern = '\b(strcpy|strcat|sprintf|vsprintf|gets)\s*\('
+goal = "No unbounded string functions"
+message = "These ignore the buffer size:"
+
+[[checks]]
+type = "require"
+pattern = '\bv?snprintf\s*\('
+goal = "Writes use snprintf / vsnprintf"
+message = "Bound every write by the space left."
+
+[[checks]]
+type = "forbid"
+pattern = '\(void\)\s*out_size'
+goal = "out_size is actually used"
+message = "The buffer size must limit the writes:"
+
+[[checks]]
+type = "forbid"
+pattern = 'char\s+\w+\s*\[\s*\d+\s*\]'
+goal = "No fixed-size scratch buffers"
+message = "Write directly into the output buffer:"
+
+[[checks]]
+type = "max_count"
+pattern = '%4d\.%02d'
+max = 1
+goal = "The money format is written once"
+message = "Extract a helper for dollars and cents."

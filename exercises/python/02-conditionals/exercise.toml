@@ -1,0 +1,96 @@
+title = "Untangle nested ifs"
+difficulty = 1
+files = ["shipping.py"]
+concepts = ["if / elif / else", "guard clauses", "constants", "dictionaries", "tuples"]
+
+brief = """
+`shipping_cost()` prices a parcel by weight, destination country, express delivery and
+membership. It is correct, but the logic is buried in a pyramid of nested `if`/`else`
+blocks, and the prices are scattered as unexplained numbers.
+
+Flatten it:
+
+- reject bad input up front with *guard clauses*, then write the happy path un-indented
+- move the per-country prices into a single lookup table (a dictionary)
+- give the discount numbers names (constants) so nobody has to guess what `0.9` means
+
+Adding a new country should become a one-line change.
+"""
+
+lesson = """
+**Guard clauses.** Instead of wrapping your whole function in `if valid:`, bail out early:
+
+    # nested                         # guard clause
+    if weight > 0:                   if weight <= 0:
+        ...everything...                 raise ValueError("...")
+    else:                            ...everything, one level shallower...
+        raise ValueError("...")
+
+Every guard removes a level of indentation from everything after it.
+
+**elif.** `else:` followed by an indented `if` is the same as `elif`, minus a level of nesting.
+
+**Dictionaries as lookup tables.** When a chain of ifs picks a value based on a key, the
+data wants to be a dictionary:
+
+    RATES = {
+        "US": (5.00, 1.50, 10.00),   # base, per kg, express surcharge
+        "CA": (8.00, 2.00, 15.00),
+    }
+    base, per_kg, express = RATES["US"]   # unpack a tuple into three names
+
+`country in RATES` tells you whether a key exists.
+
+**Constants.** Python has no `const` keyword. By convention, an ALL_CAPS name at the top of a
+module means "don't change this":
+
+    MEMBER_DISCOUNT = 0.10
+"""
+
+hints = [
+    "First move: the outermost `if weight > 0:` can become a guard at the top: `if weight <= 0: raise ValueError(...)`. Then dedent the rest. Run `check`.",
+    "Each country branch computes `base + weight * per_kg (+ express)`. Only the three numbers differ, so put them in a dict at module level: `RATES = {\"US\": (5.0, 1.5, 10.0), ...}`.",
+    "With the table, the country logic becomes: `if country not in RATES: raise ValueError(...)`, then `base, per_kg, express_fee = RATES[country]`, then `cost = base + weight * per_kg`, then `if express: cost += express_fee`.",
+    "For the discount: `MEMBER_DISCOUNT = 0.10` and `DISCOUNT_THRESHOLD = 50` at the top, then `if member and cost > DISCOUNT_THRESHOLD: cost *= 1 - MEMBER_DISCOUNT`. Using `and` merges the two nested ifs.",
+]
+
+debrief = """
+You turned *code* into *data*. The country rules used to be twelve lines of branching; now
+they're a table you can read at a glance, and adding Germany is one line, not one more
+`else` pyramid.
+
+Guard clauses ("return or raise early, then the happy path") are one of the most useful
+habits in any language. You'll see the same move in the Go and Rust tracks.
+"""
+
+[[checks]]
+type = "max_depth"
+max = 2
+goal = "Nesting is at most 2 levels deep (function body + one if)"
+message = "Use guard clauses and `and` to flatten the pyramid."
+
+[[checks]]
+type = "forbid"
+pattern = 'else:\s*\n\s*if\b'
+goal = "No `else:` immediately wrapping an `if`"
+message = "`else:` + `if` is an `elif`, or better, a guard clause:"
+
+[[checks]]
+type = "max_count"
+pattern = '"(US|CA|MX)"'
+max = 3
+goal = "Each country code appears once (in a lookup table)"
+message = "Country codes are repeated in comparisons."
+
+[[checks]]
+type = "forbid"
+pattern = '\b0\.9\b'
+goal = "No unexplained 0.9"
+message = "Name the discount, e.g. MEMBER_DISCOUNT = 0.10."
+
+[[checks]]
+type = "require"
+pattern = '^[A-Z][A-Z0-9_]*\s*='
+min = 2
+goal = "Prices/discounts live in named module-level constants"
+message = "Define ALL_CAPS constants at the top of the module."

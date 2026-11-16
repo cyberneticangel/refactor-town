@@ -1,0 +1,83 @@
+title = "Don't repeat yourself"
+difficulty = 2
+files = ["report.py"]
+concepts = ["functions", "parameters", "return values", "string formatting", "DRY"]
+
+brief = """
+`build_report()` prints a sales report grouped by order status. Someone wrote the "pending"
+section, then copy-pasted it twice for "shipped" and "delivered". Now the column format
+lives in six places, and changing the currency symbol means six edits (and one forgotten one).
+
+Extract functions so each idea is written exactly once:
+
+- one function that formats a single row
+- one function that builds a whole section for a given status
+- `build_report()` just loops over the statuses
+
+The report text must stay byte-for-byte identical.
+"""
+
+lesson = """
+**Functions** name a piece of work and let you reuse it:
+
+    def format_row(label, name, amount):
+        return f"{label:>5} | {name:<12} | ${amount:>8.2f}"
+
+Whatever differs between the copies becomes a **parameter**; whatever is the same becomes the
+**body**. The function **returns** its result so the caller decides what to do with it.
+
+**The extract-function recipe:**
+1. Find two copies of nearly the same code.
+2. Spot what differs between them. Those become the parameters.
+3. Move one copy into a function, replace both copies with calls.
+4. Run the tests.
+
+**f-string format specs.** Inside `{...}` the part after `:` controls layout:
+`>5` right-aligns in 5 characters, `<12` left-aligns in 12, `>8.2f` is a right-aligned number
+with 2 decimals.
+
+**DRY** ("Don't Repeat Yourself") isn't about typing less. It's about each fact (like "the
+total line looks like this") living in exactly one place, so it can't drift out of sync.
+"""
+
+hints = [
+    "Compare the three sections line by line. The only thing that changes is the status word (and its upper-case title). Everything else is identical.",
+    "Start small: write `def format_row(label, name, amount):` that returns the formatted line. Use it for order rows *and* the TOTAL row (pass `\"\"` as the name). Check.",
+    "Next: `def build_section(orders, status):` that returns a list of lines (header, rows, total, blank line). Inside, filter with a comprehension: `matching = [o for o in orders if o[\"status\"] == status]`.",
+    "Finally: `STATUSES = (\"pending\", \"shipped\", \"delivered\")` and in build_report: `lines = []`, `for status in STATUSES: lines += build_section(orders, status)`, `return \"\\n\".join(lines)`.",
+]
+
+debrief = """
+Three copies became one function called three times. Now, if the boss wants euros instead of
+dollars, that's one edit. If they want a "returned" section, it's one word in `STATUSES`.
+
+The deeper habit: when you see near-duplicate code, ask "what's the *difference*?" The
+difference is your parameter list. That question works in every language you'll ever use.
+"""
+
+[[checks]]
+type = "max_function_lines"
+max = 12
+goal = "Every function is 12 lines or fewer"
+message = "Break long functions into smaller ones:"
+
+[[checks]]
+type = "max_count"
+pattern = '>8\.2f'
+max = 1
+goal = "The money format is written once"
+message = "The `$...:>8.2f` column format is duplicated."
+
+[[checks]]
+type = "max_count"
+pattern = '"(pending|shipped|delivered)"'
+max = 3
+goal = "Each status name is written once"
+message = "Status names are repeated; put them in a single tuple/list and loop."
+
+[[checks]]
+type = "require"
+pattern = '^\s*def\s'
+min = 3
+goal = "The work is split into at least 3 functions"
+message = "Extract a row formatter and a section builder."

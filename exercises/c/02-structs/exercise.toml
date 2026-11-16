@@ -1,0 +1,104 @@
+title = "Parallel arrays → an array of structs"
+difficulty = 2
+files = ["library.c", "library.h"]
+concepts = ["structs", "pointers to structs (->)", "enums", "bool", "helper functions", "safe string copying"]
+
+brief = """
+A tiny library system. The `Library` struct stores books as three *parallel arrays*
+(`titles[i]`, `years[i]`, `available[i]`), so "a book" exists only as a shared index. The
+search loop is copy-pasted into checkout and return. Functions return raw numbers like `-2`
+although `library.h` defines names for them. `available` is an `int` pretending to be a bool,
+and titles are copied with `strcpy`, which overflows on a long title.
+
+Restructure it:
+
+- a `Book` struct (title, year, `bool available`) and `Library` holding an array of `Book`s
+- one `find_book` helper returning a `Book *` (or `NULL`)
+- return the named status codes. Even better, make them an `enum`
+- copy titles with a bounded function (`snprintf` or similar) instead of `strcpy`
+
+The tests use only the functions and status names in `library.h`.
+"""
+
+lesson = """
+**A struct per thing.** Instead of one array per *attribute*, have one array of *things*:
+
+    typedef struct {
+        char title[64];
+        int year;
+        bool available;     /* #include <stdbool.h> */
+    } Book;
+
+    typedef struct {
+        Book books[MAX_BOOKS];
+        size_t count;
+    } Library;
+
+**Pointers to structs** use `->`: `book->year` means `(*book).year`. Returning a pointer from
+a search lets the caller read *and modify* the found element:
+
+    static Book *find_book(Library *lib, const char *title);   /* NULL if absent */
+
+**Enums** name a set of integer constants and give them a type:
+
+    typedef enum { LIB_OK = 0, LIB_NOT_FOUND = -1 } LibStatus;
+
+A function returning `LibStatus` says what its result *means*. A bare `int` doesn't.
+
+**Bounded string copies.** `strcpy(dst, src)` writes until it finds the end of `src`, even
+past the end of `dst`. `snprintf(dst, sizeof dst, "%s", src)` never writes more than the
+buffer holds and always NUL-terminates.
+"""
+
+hints = [
+    "In library.h: add `#include <stdbool.h>`, define `typedef struct { char title[64]; int year; bool available; } Book;` and change Library to `Book books[MAX_BOOKS]; size_t count;`. The compiler will now show every line to update.",
+    "Write `static Book *find_book(Library *lib, const char *title)` with the search loop, returning `&lib->books[i]` or `NULL`. Then checkout becomes: find → NULL? not found → `!book->available`? unavailable → mark → OK.",
+    "Replace `-1`, `-2`, `-3`, `-4`, `0` returns with `LIB_NOT_FOUND` etc. To level up, replace the `#define`s with `typedef enum { LIB_OK = 0, LIB_NOT_FOUND = -1, ... } LibStatus;` and use it as the return type.",
+    "For the copy: `snprintf(book->title, sizeof book->title, \"%s\", title);`. And in `library_add`, use `MAX_BOOKS` instead of `50`. A handy idiom: `Book *book = &lib->books[lib->count++];` then fill in its fields.",
+]
+
+debrief = """
+A `Book` is now a real thing in the program: you can point at one, pass one around, and the
+compiler knows its title and year belong together. The duplicated search is one function,
+and the status codes say what they mean.
+
+The `strcpy` swap matters more than it looks. Unbounded copies are behind countless real
+security vulnerabilities. Next exercises dig into C's memory rules properly.
+"""
+
+[[checks]]
+type = "forbid"
+pattern = '\btitles\s*\[|\byears\s*\[|available\s*\[MAX'
+goal = "No parallel arrays"
+message = "Store an array of Book structs:"
+
+[[checks]]
+type = "require"
+pattern = '\}\s*Book\s*;'
+goal = "There is a Book struct"
+message = "Define `typedef struct { ... } Book;`."
+
+[[checks]]
+type = "max_count"
+pattern = 'strcmp\('
+max = 1
+goal = "The title search is written once"
+message = "Extract a find_book helper."
+
+[[checks]]
+type = "forbid"
+pattern = 'return\s+-\d|==\s*50\b'
+goal = "No raw status numbers or capacity"
+message = "Use the named constants:"
+
+[[checks]]
+type = "forbid"
+pattern = '\bstrcpy\s*\(|\bstrcat\s*\('
+goal = "No unbounded string copies"
+message = "Use snprintf (or strncpy + manual NUL):"
+
+[[checks]]
+type = "require"
+pattern = '\bbool\b'
+goal = "Availability is a bool"
+message = "Use `bool available;` from <stdbool.h>."

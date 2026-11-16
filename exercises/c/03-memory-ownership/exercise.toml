@@ -1,0 +1,116 @@
+title = "Who frees this? Ownership and a single cleanup path"
+difficulty = 3
+starter_tests_pass = false
+files = ["words.c"]
+concepts = ["malloc / free", "ownership", "memory leaks", "realloc pitfalls", "goto cleanup", "string.h"]
+
+brief = """
+**This one starts with failing tests.** Run `check` and read the LeakSanitizer report.
+
+`split_words` splits a sentence into separately allocated words. When it meets a word that is
+too long, it gives up and returns `NULL`, but forgets everything it already allocated: the
+array and every word so far. That's a **memory leak**, and the tests are built with
+AddressSanitizer, which reports it.
+
+There are quieter problems too: `words = realloc(words, ...)` loses the original array if
+`realloc` fails, `malloc` results are never checked, and characters are copied one at a time.
+
+Restructure for correctness:
+
+- every error path releases what the function owns. Use one shared cleanup path
+  (`goto fail;` is idiomatic C for this) or call `free_words`
+- grow the array safely (keep the old pointer until `realloc` succeeds)
+- check allocations
+- use `<string.h>` (`strspn`, `strcspn`, `memcpy`) instead of hand-written loops
+"""
+
+lesson = """
+**The heap.** `malloc(n)` reserves n bytes that stay reserved until you `free` them. C has no
+garbage collector. If you lose the last pointer to an allocation without freeing it, it
+**leaks**: gone until the program exits.
+
+**Ownership** is the question "whose job is it to free this?". Here, `split_words` owns
+everything it allocates *until it successfully returns it*. On success, ownership passes to
+the caller (who calls `free_words`). On failure, nobody else knows those allocations exist,
+so the function must free them itself.
+
+**One way out.** When a function acquires several resources, give it a single exit for errors:
+
+    char *a = malloc(10);
+    if (!a) goto fail;
+    char *b = malloc(20);
+    if (!b) goto fail;
+    return combine(a, b);
+    fail:
+        free(a);   /* free(NULL) is a harmless no-op */
+        free(b);
+        return NULL;
+
+This is the C version of Python's `with`, Go's `defer` and Rust's `Drop`. (Initialise pointers
+to NULL so the cleanup is always safe.)
+
+**realloc pitfall.** If `realloc` fails it returns NULL *and leaves the old block alive*.
+`p = realloc(p, n)` overwrites your only pointer to it. Use a temporary.
+
+**Library helpers**: `strspn(s, " ")` counts leading spaces; `strcspn(s, " ")` counts
+characters up to the next space; `memcpy(dst, src, n)` copies n bytes.
+"""
+
+hints = [
+    "Run `check` and read the leak report: it shows *where* the leaked memory was allocated. Both the array (`malloc` at the top) and the words leak when the too-long word triggers `return NULL`.",
+    "Quickest correct fix: replace that early `return NULL` with `free_words(words, n); *count = 0; return NULL;`. Tests go green. Now improve the structure: put that code at a `fail:` label at the bottom and `goto fail;` from every error.",
+    "Safe growth: write `static bool grow(char ***words, size_t *capacity)` that does `char **bigger = realloc(*words, new_capacity * sizeof **words); if (!bigger) return false;` and only then updates `*words`. In the loop: `if (n == capacity && !grow(&words, &capacity)) goto fail;`.",
+    "Tokenizing with string.h: `p += strspn(p, \" \"); size_t len = strcspn(p, \" \"); if (len == 0) break;`. Then a `static char *copy_word(const char *start, size_t len)` using `malloc(len + 1)`, `memcpy`, and a final `'\\0'`. Check every malloc for NULL → `goto fail`.",
+]
+
+debrief = """
+A leak isn't visible in the output, so the program "worked". Only a tool (LeakSanitizer)
+showed the problem. In a long-running server, that leak on every bad request eventually takes
+the machine down.
+
+The single-cleanup-path pattern makes correctness *structural*: every error jumps to the
+same place, so you can't forget to free on one branch. Languages since C have built this in
+(destructors, `defer`, `with`, `Drop`). Now you know what they're doing for you.
+
+Tip: compile your own C with `-fsanitize=address,undefined` while developing. It's free bug
+detection.
+"""
+
+[[checks]]
+type = "forbid"
+pattern = '(\w+)\s*=\s*realloc\(\s*\1\s*,'
+goal = "realloc never overwrites its only pointer"
+message = "Assign to a temporary first:"
+
+[[checks]]
+type = "max_count"
+pattern = 'return\s+NULL\s*;'
+max = 3
+goal = "Few, deliberate failure exits"
+message = "Route errors through one cleanup path."
+
+[[checks]]
+type = "require"
+pattern = 'free_words\s*\(|\bfree\s*\(\s*words\s*\)'
+min = 2
+goal = "split_words releases its allocations on failure"
+message = "Free the array and the words before returning NULL."
+
+[[checks]]
+type = "require"
+pattern = '\b(memcpy|strncpy|strndup)\s*\('
+goal = "Words are copied with a library function"
+message = "Use memcpy (plus a terminating NUL)."
+
+[[checks]]
+type = "require"
+pattern = '\b(strspn|strcspn|strchr)\s*\('
+goal = "Spaces are found with <string.h> helpers"
+message = "Try strspn / strcspn."
+
+[[checks]]
+type = "require"
+pattern = '==\s*NULL|!\s*\w+\s*\)|NULL\s*==' 
+min = 2
+goal = "Allocations are checked"
+message = "Check malloc's result before using it."

@@ -1,0 +1,82 @@
+title = "Stop mutating state"
+difficulty = 3
+starter_tests_pass = false
+files = ["todos.mjs"]
+concepts = ["references", "mutation", "pure functions", "spread syntax", "immutable updates"]
+
+brief = """
+**This one starts with failing tests.** That's on purpose: the messiness here causes a real bug.
+
+`todos.mjs` holds a `reducer(state, action)`: give it the current state and an action, get the
+next state. It's the heart of apps built with React/Redux. The UI keeps the *previous* state
+around (for undo, and to detect what changed), so the reducer must never modify the state it
+was given. This one does: `push`, `++`, `splice`, assigning to `todo.done`… The undo test
+fails because the "old" state was quietly changed too.
+
+Refactor the reducer so every action returns a **new** state object and leaves the old one
+untouched. Run `check` first to watch the tests fail, then make them pass.
+"""
+
+lesson = """
+**References.** In JavaScript, objects and arrays are passed by reference. After
+`const b = a;`, `a` and `b` are the *same* array. `b.push(1)` changes `a` too. That's what's
+breaking undo here.
+
+**Pure functions** compute a result from their inputs without changing anything outside.
+Same input, same output, no surprises. Reducers must be pure.
+
+**Immutable updates** create new values instead of editing old ones:
+
+    // arrays
+    [...todos, newTodo]                       // add (instead of push)
+    todos.filter((t) => t.id !== id)          // remove (instead of splice)
+    todos.map((t) => t.id === id ? { ...t, done: !t.done } : t)   // change one
+
+    // objects
+    { ...state, nextId: state.nextId + 1 }    // copy, overriding one field
+
+`...` is **spread syntax**: "copy everything from here". Fields listed after it win.
+
+Unchanged items are shared between old and new state. That's fine, because nobody mutates them.
+"""
+
+hints = [
+    "Run `check` and read the failing test names: it's the undo and the 'does not mutate' tests. Now read `add`: `state.todos.push(...)` changes the array the old state still points to.",
+    "For `add`, return a brand-new object: `return { ...state, todos: [...state.todos, { id: state.nextId, text: action.text, done: false }], nextId: state.nextId + 1 };`.",
+    "For `toggle`: `todos: state.todos.map((t) => (t.id === action.id ? { ...t, done: !t.done } : t))`. Note the `{ ...t, ... }`: you must copy the todo too, not just the array.",
+    "For `remove`: `todos: state.todos.filter((t) => t.id !== action.id)`. For `clearDone`: filter on `!t.done`. Each case returns `{ ...state, todos: ... }`. Unknown actions return `state` unchanged.",
+]
+
+debrief = """
+The bug wasn't in any single line; it was in the *style*. Mutating shared data meant the
+"previous" state was secretly the same object as the new one.
+
+Immutability is a big idea: React, Redux, functional languages, and Rust's borrow checker
+(which you'll meet in the Rust track) are all, in different ways, about controlling who may
+change what. When nothing changes behind your back, code becomes much easier to reason about.
+"""
+
+[[checks]]
+type = "forbid"
+pattern = '\.(push|pop|shift|unshift|splice|sort|reverse)\('
+goal = "No mutating array methods"
+message = "These change the array in place:"
+
+[[checks]]
+type = "forbid"
+pattern = '\+\+|--|\+=|-='
+goal = "No in-place increments"
+message = "Compute a new value instead:"
+
+[[checks]]
+type = "forbid"
+pattern = '\b(state|todo|t)(\.\w+|\[[^\]]*\])+\s*=[^=>]'
+goal = "No assigning to existing objects' fields"
+message = "Create a copy with spread instead:"
+
+[[checks]]
+type = "require"
+pattern = '\.\.\.'
+min = 3
+goal = "Uses spread syntax to build new objects/arrays"
+message = "Use `{ ...state }` and `[...array]` to copy."

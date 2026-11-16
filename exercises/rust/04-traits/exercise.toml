@@ -1,0 +1,109 @@
+title = "Copy-pasted impls → a trait with default methods"
+difficulty = 3
+files = ["catalog.rs"]
+concepts = ["traits", "default methods", "trait objects (dyn)", "iterator chain", "constants"]
+
+brief = """
+A media catalog has `Book`, `Movie` and `Album`. Each has its own `summary()` and `is_classic()`,
+three copies of the same code, differing only in a label and which field holds the creator.
+`catalog_report` then repeats the same loop three times, and the magic `2026` and `50` appear
+three times each.
+
+Factor out the shared behaviour:
+
+- define a `trait` (e.g. `CatalogItem`) that each type implements
+- the trait *requires* small accessors (`kind`, `title`, `creator`, `year`) and *provides*
+  `summary()` and `is_classic()` as default methods, written once
+- `catalog_report` treats everything as the trait and loops once
+- name the year constants
+
+The tests call `.summary()` and `.is_classic()` on each type, so keep those method names.
+"""
+
+lesson = """
+A **trait** describes behaviour a type can have, like an interface in Go or Java:
+
+    trait Animal {
+        fn name(&self) -> &str;            // required: each type writes this
+        fn greet(&self) -> String {        // provided: written once, shared
+            format!("Hi, I'm {}", self.name())
+        }
+    }
+
+    struct Dog;
+    impl Animal for Dog {
+        fn name(&self) -> &str { "Dog" }   // greet() comes for free
+    }
+
+**Default methods** are the trick: implementors supply the *facts*, the trait supplies the
+*logic*. One copy of the formatting, no matter how many types.
+
+**Trait objects.** `&dyn Animal` is "a reference to some type that implements Animal". It lets
+you put different types in one collection:
+
+    let zoo: Vec<&dyn Animal> = vec![&dog, &cat];
+    for a in &zoo { println!("{}", a.greet()); }
+
+**Chaining iterators.** `a.iter().chain(b.iter())` walks one then the other. Map each element
+to `&dyn Trait` (`.map(|x| x as &dyn Trait)`) so the chained iterators have the same type.
+
+**Constants**: `const CURRENT_YEAR: u32 = 2026;`
+"""
+
+hints = [
+    "Write the trait with four required methods: `fn kind(&self) -> &str; fn title(&self) -> &str; fn creator(&self) -> &str; fn year(&self) -> u32;`. Implement it for all three types (each method is one line).",
+    "Move `summary` and `is_classic` *into the trait* as default methods using the accessors, e.g. `format!(\"[{}] {} ({}) by {}\", self.kind(), self.title(), self.year(), self.creator())`. Delete the three inherent `impl` blocks.",
+    "Report: build `let items: Vec<&dyn CatalogItem> = books.iter().map(|b| b as &dyn CatalogItem).chain(movies.iter().map(|m| m as &dyn CatalogItem)).chain(...).collect();`.",
+    "With `items`, one loop (or `map`) builds each line, adding `\" *\"` for classics; `items.iter().filter(|i| i.is_classic()).count()` gives the classic count. Add `const CURRENT_YEAR` and `const CLASSIC_AGE`.",
+]
+
+debrief = """
+Three types, one `summary`, one `is_classic`, one report loop. Adding `Podcast` is now: a
+struct, four one-line accessors, and a `.chain(...)`.
+
+Traits are how Rust shares behaviour without inheritance. Required methods describe what a
+type *is*; default methods describe what it can *do* as a result. You've now seen the same idea
+as Go interfaces, JavaScript dispatch tables and (next) Java interfaces. It's one of the most
+important ideas in programming: **depend on behaviour, not on concrete types**.
+"""
+
+[[checks]]
+type = "require"
+pattern = '\btrait\s+\w+'
+goal = "Shared behaviour lives in a trait"
+message = "Define a trait the three types implement."
+
+[[checks]]
+type = "require"
+pattern = 'impl\s+\w+\s+for\s+(Book|Movie|Album)'
+min = 3
+goal = "Book, Movie and Album implement the trait"
+message = "Add `impl YourTrait for Book` etc."
+
+[[checks]]
+type = "max_count"
+pattern = 'fn\s+summary'
+max = 1
+goal = "summary() is written once"
+message = "Make it a default method on the trait."
+
+[[checks]]
+type = "max_count"
+pattern = 'fn\s+is_classic'
+max = 1
+goal = "is_classic() is written once"
+message = "Make it a default method on the trait."
+
+[[checks]]
+type = "max_count"
+pattern = '\b2026\b'
+max = 1
+goal = "The current year is a named constant"
+message = "Define `const CURRENT_YEAR: u32 = 2026;`."
+
+[[checks]]
+type = "max_count"
+pattern = 'push_str\(" \*"\)|" \*"'
+max = 1
+goal = "The report loop is written once"
+message = "Treat everything as the trait and loop once."

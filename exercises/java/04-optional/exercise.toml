@@ -1,0 +1,101 @@
+title = "null checks → Optional"
+difficulty = 3
+files = ["UserDirectory.java", "User.java"]
+concepts = ["null", "Optional", "map / flatMap / filter / orElse", "records", "making absence explicit"]
+
+brief = """
+`UserDirectory` looks people up by id. Two things can be missing: the user, and their email
+(null *or* blank). Both are represented by `null`, so every method is a ladder of
+`if (x == null) return ...`. Forget one check and you get a `NullPointerException` in
+production. The type `String` gives no warning that it might be null.
+
+Make absence visible in the types:
+
+- `find(id)` returns `Optional<User>` instead of a maybe-null `User`
+- the "no email" case is an `Optional<String>` too (e.g. make `User` a record whose `email()`
+  returns `Optional<String>`, normalising null/blank in its constructor)
+- replace the null ladders with `map`, `flatMap`, `filter` and `orElse`
+- no `== null`, no `!= null`, no `return null`
+
+The tests only call `add`, `contactLine`, `domainOf` and `countWithEmail`.
+"""
+
+lesson = """
+**null** means "no object here". Its inventor, Tony Hoare, called it his "billion-dollar
+mistake": every reference *might* be null, and the type system won't remind you to check.
+
+**Optional<T>** is a box that holds a value or is empty, and the type says so:
+
+    Optional<String> nick = Optional.ofNullable(maybeNull);
+    Optional<String> none = Optional.empty();
+
+Instead of unpacking it with ifs, you transform it:
+
+    nick.map(String::toUpperCase)        // transform if present
+        .filter(n -> n.length() > 2)     // empty if the test fails
+        .orElse("anonymous");            // the fallback when empty
+
+**flatMap** is for when the transformation *itself* returns an Optional, so you don't end up
+with `Optional<Optional<String>>`:
+
+    findUser(id).flatMap(User::email)   // Optional<String>
+
+**Normalise at the boundary.** Clean up messy input (null, blank) once, where data enters
+(e.g. a constructor), and the rest of the code never has to worry about it.
+
+**Records can have extra constructors** that delegate with `this(...)`.
+"""
+
+hints = [
+    "Change `find` to `private Optional<User> find(String id) { return Optional.ofNullable(users.get(id)); }`. The compiler will now complain everywhere it's used. Good, that's the point.",
+    "Make User a record with an Optional email and a convenience constructor that normalises: `public record User(String id, String name, Optional<String> email) { public User(String id, String name, String email) { this(id, name, Optional.ofNullable(email).filter(e -> !e.isBlank())); } }`.",
+    "`domainOf`: `find(id).flatMap(User::email).filter(e -> e.contains(\"@\")).map(e -> e.substring(e.indexOf('@') + 1).toLowerCase()).orElse(\"n/a\")`. You can delete `emailOf` entirely.",
+    "`contactLine`: `find(id).map(user -> user.email().map(e -> user.name() + \" <\" + e + \">\").orElse(user.name() + \" (no email)\")).orElse(\"unknown user\")`. And `countWithEmail` streams `users.values()` filtering on `user.email().isPresent()`.",
+]
+
+debrief = """
+"This might be missing" moved from comments (`// may be null!`) into the type system. A
+method returning `Optional<User>` *forces* callers to deal with absence; a method returning
+`User` can no longer secretly return null.
+
+You've met this idea before: Rust's `Option`, and Python's `None` checks. Modern languages
+(Kotlin, Swift, TypeScript with strictNullChecks) build it into the type system. Java gets
+there with `Optional`, and with the discipline of never returning null.
+"""
+
+[[checks]]
+type = "forbid"
+pattern = '[=!]=\s*null'
+goal = "No null comparisons"
+message = "Use Optional instead:"
+
+[[checks]]
+type = "forbid"
+pattern = 'return\s+null\s*;'
+goal = "Nothing returns null"
+message = "Return Optional.empty() or an Optional:"
+
+[[checks]]
+type = "require"
+pattern = 'Optional<User>'
+goal = "find() returns Optional<User>"
+message = "Change find's return type."
+
+[[checks]]
+type = "require"
+pattern = 'Optional<String>'
+goal = "A missing email is an Optional<String>"
+message = "Model the email as Optional<String>."
+
+[[checks]]
+type = "require"
+pattern = '\.(map|flatMap)\('
+min = 2
+goal = "Optionals are transformed with map/flatMap"
+message = "Chain map/flatMap/filter/orElse instead of if-ladders."
+
+[[checks]]
+type = "forbid"
+pattern = '\.get\(\)\s*[;.)]|\.isPresent\(\)\s*\)\s*\{'
+goal = "No unwrapping with get() / if (isPresent())"
+message = "That's a null check in disguise:"

@@ -1,0 +1,94 @@
+title = "Stringly-typed state → enums and match"
+difficulty = 2
+files = ["order.rs"]
+concepts = ["enums", "match", "exhaustiveness", "Option", "derive", "making illegal states unrepresentable"]
+
+brief = """
+An `Order` moves through `placed → paid → shipped → delivered`, and can be `cancelled` before
+it ships. The status is a `String`. Nothing stops a typo like `"shiped"`, every method
+compares strings, and `label()` needs a final `"Unknown"` fallback for states that should be
+impossible.
+
+Model the states as a type:
+
+- create `enum Status { Placed, Paid, Shipped, Delivered, Cancelled }`
+- store a `Status`, not a `String`
+- use `match` everywhere. Let the compiler check every state is handled
+- give `Status` helper methods like `next()` and `label()`
+"""
+
+lesson = """
+**Enums** list every possible value of a type:
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    enum Light { Red, Yellow, Green }
+
+A `Light` can't be `"Purple"` or `"gren"`. Typos become compile errors.
+
+**match** branches on an enum, and it must be **exhaustive**:
+
+    fn next(light: Light) -> Light {
+        match light {
+            Light::Red => Light::Green,
+            Light::Green => Light::Yellow,
+            Light::Yellow => Light::Red,
+        }
+    }
+
+Add a variant later and the compiler lists every `match` you need to update. No `"Unknown"`
+fallback required, because there is no unknown.
+
+**Option** expresses "maybe a value": `Some(x)` or `None`. A `next()` that returns
+`Option<Status>` naturally says "delivered has no next state".
+
+**matches!** is a shortcut for a yes/no match: `matches!(s, Status::Placed | Status::Paid)`.
+
+**derive** auto-implements common traits. `Copy` lets small enums be passed by value freely.
+"""
+
+hints = [
+    "Add the enum above `Order` with `#[derive(Debug, Clone, Copy, PartialEq, Eq)]`, change the field to `status: Status`, and let the compiler errors guide you through every place that used strings.",
+    "Put the transition table on the enum: `fn next(self) -> Option<Status> { match self { Status::Placed => Some(Status::Paid), ..., Status::Delivered | Status::Cancelled => None } }`.",
+    "Now `advance` is a `match self.status.next() { Some(next) => { self.status = next; true } None => false }`, and `is_final` is `self.status.next().is_none()`.",
+    "Give Status a `fn label(self) -> &'static str` with a `match` (no fallback arm needed!). `Order::label` returns `self.status.label().to_string()`. For cancel: `matches!(self.status, Status::Placed | Status::Paid)`.",
+]
+
+debrief = """
+The `"Unknown"` branch is gone because the state it handled can no longer exist. That's
+the core idea: **make illegal states unrepresentable**, and a whole category of bugs (and the
+code defending against them) disappears.
+
+The transition rules now live in one `next()` function. Want a "returned" state? Add a variant,
+and the compiler will walk you to every `match` that needs a new arm.
+"""
+
+[[checks]]
+type = "require"
+pattern = 'enum\s+Status'
+goal = "There is a Status enum"
+message = "Define `enum Status { Placed, Paid, Shipped, Delivered, Cancelled }`."
+
+[[checks]]
+type = "forbid"
+pattern = 'status:\s*String'
+goal = "The status field is not a String"
+message = "Store a Status instead:"
+
+[[checks]]
+type = "forbid"
+pattern = '==\s*"'
+goal = "No string comparisons"
+message = "Match on the enum:"
+
+[[checks]]
+type = "forbid"
+pattern = '"Unknown"'
+goal = "No fallback for impossible states"
+message = "An exhaustive match doesn't need one:"
+
+[[checks]]
+type = "require"
+pattern = '\bmatch\b'
+min = 2
+goal = "Behaviour is chosen with match"
+message = "Use `match` on the status."

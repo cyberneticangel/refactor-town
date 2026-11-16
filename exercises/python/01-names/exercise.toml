@@ -1,0 +1,91 @@
+title = "Names that explain themselves"
+difficulty = 1
+files = ["stats.py"]
+concepts = ["variables", "naming", "for loops", "built-in functions"]
+
+brief = """
+A weather station sends temperature readings. Negative numbers are sensor errors and must be
+ignored. `summarize()` works, and the tests prove it, but reading it feels like decoding a puzzle.
+
+Make `stats.py` read like plain English:
+
+- give every variable a name that says what it holds
+- loop over the readings themselves, not over index numbers
+- let Python's built-ins (`sum`, `max`, `len`) do the arithmetic
+
+Keep the function name `summarize` and what it returns exactly the same.
+"""
+
+lesson = """
+**Variables are labels.** `t = 0` and `total = 0` do the same thing to the computer, but only
+one of them tells the next reader (often future you) what the value means. Good names are the
+cheapest documentation there is.
+
+**Looping.** Many languages loop with a counter: `for i in range(len(items))`, then `items[i]`.
+Python lets you loop over the items directly:
+
+    for reading in readings:
+        print(reading)
+
+There's no index to get wrong and no `[i]` noise.
+
+**Building a filtered list.** A *list comprehension* builds a new list in one line:
+
+    valid = [r for r in readings if r >= 0]
+
+Read it as: "r, for every r in readings, if r is at least 0".
+
+**Built-ins.** Python ships with functions for common jobs:
+
+    sum([3, 4, 5])   # 12
+    max([3, 4, 5])   # 5
+    len([3, 4, 5])   # 3
+
+Reaching for a built-in instead of a hand-written loop means less code and fewer bugs.
+"""
+
+hints = [
+    "Start with names only. Rename `l` to `readings`, `x` to something like `valid`, `t` to `total`, `h` to `highest`. Run `check` after each rename. The tests should stay green.",
+    "Replace `for i in range(len(x)):` with `for value in x:` and use `value` where the code had `x[i]`. Better still: that whole loop is just `sum(...)`.",
+    "The first loop filters. Turn it into a list comprehension: `valid = [r for r in readings if r >= 0]`. Then `total = sum(valid)` and `highest = max(valid)` after the empty check.",
+    "Shape of a finished version: build `valid`, return the empty-result dict early if `not valid`, otherwise return a dict using `len(valid)`, `sum(valid)`, `sum(valid) / len(valid)` and `max(valid)`.",
+]
+
+debrief = """
+You just did the most common refactoring there is: **rename**. Notice that the tests never
+cared what your variables were called, because names exist purely for humans.
+
+You also replaced three hand-rolled loops with built-ins and a comprehension. Each loop you
+delete is a loop that can't have an off-by-one bug. Professional code reviews flag
+`range(len(...))` constantly. Now you'll spot it everywhere.
+"""
+
+[[checks]]
+type = "forbid"
+pattern = '^\s*[a-z]\s*=[^=]'
+goal = "No single-letter variable names"
+message = "Rename these so they say what they hold:"
+
+[[checks]]
+type = "forbid"
+pattern = 'def summarize\(\s*[a-z]\s*\)'
+goal = "The parameter has a descriptive name"
+message = "`l` doesn't say what it is (and looks like the digit 1)."
+
+[[checks]]
+type = "forbid"
+pattern = 'range\(\s*len\('
+goal = "Loop over items, not over index numbers"
+message = "`range(len(...))` loops over indexes; loop over the items directly:"
+
+[[checks]]
+type = "require"
+pattern = '\bsum\('
+goal = "Use the built-in sum()"
+message = "Python can add up a list for you."
+
+[[checks]]
+type = "require"
+pattern = '\bmax\('
+goal = "Use the built-in max()"
+message = "Finding the highest value is a one-liner."

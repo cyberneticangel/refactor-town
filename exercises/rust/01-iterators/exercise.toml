@@ -1,0 +1,91 @@
+title = "Index loops → iterators, owned → borrowed"
+difficulty = 1
+files = ["scores.rs"]
+concepts = ["iterators", "closures", "borrowing", "slices (&[T]) and &str", "Option", "expressions"]
+
+brief = """
+Three small functions over student data. They work, but they're written like C: `while` loops
+with manual counters, `[i]` indexing, `.clone()` everywhere to dodge the borrow checker,
+`&Vec<T>` and `&String` parameters, and explicit `return` on the last line.
+
+Make them idiomatic Rust:
+
+- take `&[T]` and `&str` instead of `&Vec<T>` and `&String`
+- replace the loops with iterator chains (`iter`, `filter`, `map`, `sum`, `max_by_key`, ...)
+- no `.clone()`. Borrow instead (`longest_word` can return `Option<&str>`)
+- let the last expression be the return value
+
+The tests call your functions with `&Vec` and `&String` arguments; those coerce automatically to
+slices, so that still works.
+"""
+
+lesson = """
+**Borrowing.** `&T` is a reference: you can look but you don't own it. A function that only
+reads data should borrow it. `&[i32]` (a *slice*) accepts a borrowed `Vec`, an array, or part
+of either. `&str` accepts a `String`, a literal, or a substring. `&Vec<i32>` and `&String`
+accept strictly less and gain nothing.
+
+**Cloning** copies data. Sometimes necessary, often a sign you're fighting the borrow checker.
+Returning `Option<&str>` (a view into the caller's text) avoids allocating a new `String`.
+
+**Iterators** are Rust's map/filter/reduce, and they compile to loops as fast as hand-written:
+
+    let evens: Vec<i32> = nums.iter().copied().filter(|n| n % 2 == 0).collect();
+    let total: i32 = nums.iter().sum();
+    let first_chars: String = words.iter().filter_map(|w| w.chars().next()).collect();
+    let longest = words.iter().max_by_key(|w| w.len());   // Option<&&str>
+
+`|x| ...` is a **closure** (an inline function). `.collect()` builds a collection, and the type
+annotation says which.
+
+**Expressions.** In Rust, a block's last expression (no semicolon) is its value, so
+`return x;` at the end of a function is just `x`.
+"""
+
+hints = [
+    "Signatures first: `scores: &[i32]`, `names: &[String]`, `text: &str`. Everything still compiles and the tests still pass. Check! Then replace each trailing `return x;` with just `x`.",
+    "`passing_average`: `let passing: Vec<i32> = scores.iter().copied().filter(|&s| s >= pass_mark).collect();` then `is_empty()` → None, else sum and divide.",
+    "`initials`: `names.iter().filter_map(|name| name.chars().next()).map(|c| c.to_ascii_uppercase()).collect()`. `chars().next()` is None for empty strings, so filter_map skips them for free.",
+    "`longest_word` → `pub fn longest_word(text: &str) -> Option<&str>` with `text.split_whitespace().rev().max_by_key(|w| w.len())`. Why `.rev()`? `max_by_key` returns the *last* of equal maxima, and the tests want the first.",
+]
+
+debrief = """
+No more indexes, so no more off-by-one or out-of-bounds panics. No more clones, so no more
+hidden allocations. And `longest_word` now returns a *view* into the caller's string instead of
+a copy. The compiler checks that view can't outlive the text it points into. That guarantee is
+what makes Rust Rust.
+
+Notice the `.rev()` trick: the tests caught a subtle tie-breaking difference that a casual
+rewrite would have changed. That's the refactoring safety net doing its job.
+"""
+
+[[checks]]
+type = "forbid"
+pattern = '&Vec<|&String\b'
+goal = "Parameters borrow slices (&[T], &str)"
+message = "Prefer &[T] / &str in parameters:"
+
+[[checks]]
+type = "forbid"
+pattern = '\bwhile\b|for\s+\w+\s+in\s+\d+\s*\.\.'
+goal = "No index-based loops"
+message = "Use iterator methods:"
+
+[[checks]]
+type = "forbid"
+pattern = '\.clone\(\)'
+goal = "No .clone()"
+message = "Borrow instead of copying:"
+
+[[checks]]
+type = "forbid"
+pattern = '\breturn\s+[^;]+;\s*\n\}'
+goal = "No `return` on the last line"
+message = "Let the final expression be the value:"
+
+[[checks]]
+type = "require"
+pattern = '\.iter\(\)|\.split_whitespace\(\)'
+min = 3
+goal = "Each function uses an iterator chain"
+message = "Build each result from an iterator."

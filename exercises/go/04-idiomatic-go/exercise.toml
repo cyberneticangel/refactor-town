@@ -1,0 +1,100 @@
+title = "Write it like a Gopher: range, maps, sort"
+difficulty = 3
+files = ["wordfreq.go"]
+concepts = ["range loops", "maps", "slices & sorting", "closures", "standard library", "runes"]
+
+brief = """
+`TopWords` finds the most common words in a text. The author knew loops and nothing else:
+a hand-written tokenizer, ASCII arithmetic for lowercase (`c + 32`), two parallel slices with
+a linear search for counting, and a hand-rolled bubble sort. `Format` builds output with `+`
+and pads with a loop of spaces.
+
+Replace hand-rolled code with Go's standard library:
+
+- `range` loops instead of `for i := 0; i < len(...); i++`
+- `strings.ToLower` and `strings.FieldsFunc` for tokenizing
+- a `map[string]int` for counting
+- `slices.SortFunc` (or `sort.Slice`) with a comparison function for ordering
+- `strings.Builder` + `fmt.Fprintf` for output (`%-*s` pads to a width)
+"""
+
+lesson = """
+**range** iterates over slices, maps and strings:
+
+    for i, v := range items { ... }   // index and value
+    for _, v := range items { ... }   // just values
+    for key, val := range counts { ... }
+
+**Maps** count things in one line. A missing key reads as the zero value:
+
+    counts := map[string]int{}
+    counts["go"]++
+
+**Functions as arguments.** Many library functions take a small function (a *closure*):
+
+    strings.FieldsFunc(s, func(r rune) bool { return r == ',' })   // split where true
+
+    slices.SortFunc(people, func(a, b Person) int {
+        return cmp.Compare(a.Age, b.Age)     // negative, zero or positive
+    })
+
+`cmp.Or(x, y)` returns the first non-zero value. Perfect for "sort by count, then by word".
+
+**Runes.** Iterating a string with `range` gives `rune`s (Unicode code points), not bytes.
+Library functions handle Unicode properly, unlike `c + 32`.
+
+**Formatting.** `fmt.Fprintf(&sb, "%-*s%d\\n", width, word, count)`: `%-*s` left-aligns
+`word` in `width` characters.
+"""
+
+hints = [
+    "Tokenizing: `strings.FieldsFunc(strings.ToLower(text), func(r rune) bool { return !isWordChar(r) })` where `isWordChar` returns true for a–z and the apostrophe. That replaces the whole first loop.",
+    "Counting: `counts := map[string]int{}` then `for _, w := range words { counts[w]++ }`. Then turn the map into a `[]WordCount` with a range loop.",
+    "Sorting: `slices.SortFunc(result, func(a, b WordCount) int { return cmp.Or(cmp.Compare(b.Count, a.Count), cmp.Compare(a.Word, b.Word)) })`. Note b before a for descending counts. Return `result[:min(n, len(result))]`.",
+    "Format: find `width` with a range loop and `max`, then `var sb strings.Builder` and `fmt.Fprintf(&sb, \"%-*s%d\\n\", width+2, c.Word, c.Count)`.",
+]
+
+debrief = """
+About 80 lines became about 35, and the remaining lines are the *interesting* ones: what counts
+as a word, and how ties are ordered. The bubble sort, the linear search and the padding loop
+are gone. Each was a place a bug could hide.
+
+Knowing your standard library is a superpower in any language. When you catch yourself writing
+a general-purpose algorithm (sort, search, split, pad), stop and look for it first.
+"""
+
+[[checks]]
+type = "forbid"
+pattern = 'for\s+\w+\s*:=\s*0\s*;'
+goal = "Use `range` instead of counting loops"
+message = "Replace with `for _, x := range ...`:"
+
+[[checks]]
+type = "require"
+pattern = 'map\[string\]int'
+goal = "Count with a map"
+message = "Use a `map[string]int` instead of parallel slices."
+
+[[checks]]
+type = "require"
+pattern = 'slices\.Sort|sort\.(Slice|Sort)'
+goal = "Sort with the standard library"
+message = "Use slices.SortFunc or sort.Slice."
+
+[[checks]]
+type = "forbid"
+pattern = '\w+\[\w+\],\s*\w+\[\w+\s*\+\s*1\]\s*='
+goal = "No hand-written swaps"
+message = "That's a bubble sort:"
+
+[[checks]]
+type = "forbid"
+pattern = '\+\s*32\b'
+goal = "No ASCII arithmetic for lowercasing"
+message = "Use strings.ToLower:"
+
+[[checks]]
+type = "require"
+pattern = 'strings\.Builder'
+goal = "Build output with strings.Builder"
+message = "Avoid `out = out + ...`."

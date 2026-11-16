@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Refactor Town launcher. Usage: ./town            (interactive)
+#                                 ./town <command>  (one-shot, e.g. ./town check)
+cd "$(dirname "$0")" && exec python3 -m refactor_town "$@"

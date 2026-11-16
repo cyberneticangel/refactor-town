@@ -1,0 +1,90 @@
+title = "Errors, early returns and the happy path"
+difficulty = 1
+files = ["records.go"]
+concepts = ["error values", "early return", "error wrapping (%w)", "multiple return values", "strings & strconv"]
+
+brief = """
+`ParseRecord` turns a line like `Ada Lovelace, 36, ada@example.com` into a `Record`, returning an
+error if anything is wrong. It works, but every check wraps the next one in another `if ... {`
+with an `else` at the bottom, so the actual success case is buried six levels deep.
+Go programmers call this "arrow code".
+
+Reshape it the Go way:
+
+- check each problem and `return` immediately ("early return"), keeping the happy path flat
+  along the left edge
+- no `else` after a block that returns
+- wrap underlying errors with `%w` so callers can inspect them with `errors.Is` / `errors.As`,
+  instead of flattening them to text with `.Error()`
+"""
+
+lesson = """
+**Errors are values in Go.** Functions that can fail return two things:
+
+    n, err := strconv.Atoi("42")
+    if err != nil {
+        return 0, err
+    }
+
+There are no exceptions; you check `err` right where it happens.
+
+**Early return / "line of sight".** Go style keeps the success path un-indented:
+
+    func parse(s string) (int, error) {
+        if s == "" {
+            return 0, errors.New("empty")
+        }
+        n, err := strconv.Atoi(s)
+        if err != nil {
+            return 0, fmt.Errorf("parse %q: %w", s, err)
+        }
+        return n, nil
+    }
+
+Read only the left edge and you see what the function does when everything works.
+
+**Wrapping.** `fmt.Errorf("...: %w", err)` builds a new message *and* keeps the original
+error inside it. Later, `errors.Is(err, strconv.ErrSyntax)` can still find it. `%s` with
+`err.Error()` throws that information away.
+"""
+
+hints = [
+    "Start with the first check. Flip `if len(parts) == 3 {` into `if len(parts) != 3 { return Record{}, fmt.Errorf(...) }` and dedent everything that was inside. Delete the matching `else`. Check.",
+    "Repeat for each condition: name empty → return error; Atoi fails → return error; age out of range → return error; no @ → return error. Each becomes a 3-line `if` at the top level.",
+    "For the age error: `return Record{}, fmt.Errorf(\"invalid age %q: %w\", ageText, err)`. Note the `%w` and passing `err` itself, not `err.Error()`.",
+    "`ParseAll` has the same shape: inside the loop, `rec, err := ParseRecord(line); if err != nil { return nil, fmt.Errorf(\"line %d: %w\", i+1, err) }` then `records = append(records, rec)`.",
+]
+
+debrief = """
+Same checks, same errors, but now you can read the function top to bottom and the last line
+is the success case. This "line of sight" style is so central to Go that `gofmt`-era codebases
+are full of it.
+
+The `%w` change is subtle but real: callers can now ask `errors.Is(err, strconv.ErrSyntax)`.
+Errors you can inspect are a feature; errors flattened to strings are a dead end.
+"""
+
+[[checks]]
+type = "forbid"
+pattern = '\}\s*else\s*\{'
+goal = "No `else` blocks (return early instead)"
+message = "An `if` that returns doesn't need an `else`:"
+
+[[checks]]
+type = "max_depth"
+max = 3
+goal = "Nesting is at most 3 levels"
+message = "Flatten the arrow with early returns."
+
+[[checks]]
+type = "require"
+pattern = '%w'
+min = 2
+goal = "Underlying errors are wrapped with %w"
+message = "Use `fmt.Errorf(\"...: %w\", err)` for the Atoi error and in ParseAll."
+
+[[checks]]
+type = "forbid"
+pattern = '\.Error\(\)'
+goal = "Errors aren't flattened to strings"
+message = "Pass the error itself with %w:"

@@ -1,0 +1,109 @@
+title = "Stringly errors → Result, enums and ?"
+difficulty = 2
+files = ["duration.rs"]
+concepts = ["Result", "the ? operator", "custom error enums", "Display trait", "match", "map_err"]
+
+brief = """
+`parse_duration("1h30m")` returns 5400 seconds, or an error. The errors are plain `String`s,
+so a caller can't tell "unknown unit" from "empty input" without parsing English text. And
+every fallible step is handled with a verbose `match` that just passes the error along.
+
+Make the errors real and the propagation short:
+
+- define an error `enum` (e.g. `DurationError`) with one variant per failure
+- implement `Display` for it so `.to_string()` produces the exact same messages
+- propagate errors with `?` (plus `map_err` where you need to convert)
+- replace the `if c == 'h' ... else if` chain with a `match`
+- `total_duration` can become a single iterator expression
+
+The tests compare results with `==`, so your enum needs `#[derive(Debug, PartialEq)]`.
+"""
+
+lesson = """
+**Result** is how Rust returns "a value or an error": `Result<u64, MyError>` is either
+`Ok(u64)` or `Err(MyError)`. The compiler won't let you ignore which one you got.
+
+**Error enums.** Each failure mode becomes a variant, optionally carrying data:
+
+    #[derive(Debug, PartialEq)]
+    pub enum ParseError {
+        Empty,
+        BadDigit(char),
+    }
+
+Callers can `match` on variants. Far better than comparing strings.
+
+**Display** controls how a value prints (and powers `.to_string()`):
+
+    impl std::fmt::Display for ParseError {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            match self {
+                ParseError::Empty => write!(f, "empty input"),
+                ParseError::BadDigit(c) => write!(f, "bad digit '{c}'"),
+            }
+        }
+    }
+
+**The ? operator**: "if this is Err, return it now; otherwise unwrap the Ok":
+
+    let n: u64 = text.parse().map_err(|_| ParseError::BadDigit(c))?;
+
+`map_err` converts one error type into another first.
+
+**Summing Results.** `iter.map(f).sum::<Result<u64, E>>()` adds the Ok values and stops at
+the first Err. That's a whole loop-with-early-return in one line.
+"""
+
+hints = [
+    "Define `#[derive(Debug, PartialEq)] pub enum DurationError { Empty, MissingNumber(char), UnknownUnit(char), NoUnit(String) }` and change both return types to `Result<u64, DurationError>`. The compiler will now point at every `Err(...)` to update.",
+    "Implement `std::fmt::Display for DurationError` with a `match self` that `write!`s the exact old messages, e.g. `DurationError::UnknownUnit(c) => write!(f, \"unknown unit '{c}'\")`.",
+    "Move the unit lookup into `fn seconds_per(unit: char) -> Result<u64, DurationError>` using `match unit { 'h' => Ok(3600), ..., other => Err(DurationError::UnknownUnit(other)) }`. Then in the loop: `total += n * seconds_per(c)?;`.",
+    "The number: `let n: u64 = digits.parse().map_err(|_| DurationError::MissingNumber(c))?;`. And `total_duration` is just `items.iter().map(|item| parse_duration(item)).sum()`.",
+]
+
+debrief = """
+Two `match` blocks became two `?`s, and the error type now *documents* every way parsing can
+fail. A caller can write `match err { DurationError::UnknownUnit(c) => ..., _ => ... }`. Try
+doing that with a String.
+
+The tests checked the messages, so behaviour was preserved exactly, but the *type* got
+richer. "Make illegal states unrepresentable" and "make errors data" are themes you'll keep
+meeting in Rust.
+"""
+
+[[checks]]
+type = "forbid"
+pattern = 'Result<[^>]*String\s*>'
+goal = "Errors aren't plain Strings"
+message = "Return a custom error type:"
+
+[[checks]]
+type = "require"
+pattern = '\benum\s+\w+'
+goal = "There is an error enum"
+message = "Define an enum with one variant per failure."
+
+[[checks]]
+type = "require"
+pattern = 'impl\s+(std::)?(fmt::)?Display\s+for'
+goal = "The error implements Display"
+message = "Implement Display so .to_string() keeps working."
+
+[[checks]]
+type = "require"
+pattern = '\)\?'
+min = 2
+goal = "Errors propagate with ?"
+message = "Use `?` (with map_err where needed)."
+
+[[checks]]
+type = "forbid"
+pattern = 'Err\(\w+\)\s*=>\s*(\{\s*)?return\s+Err'
+goal = "No match blocks that only re-return errors"
+message = "That's what `?` is for:"
+
+[[checks]]
+type = "forbid"
+pattern = "if\\s+c\\s*==\\s*'"
+goal = "Units are chosen with match, not an if chain"
+message = "Use `match c { 'h' => ..., }`:"

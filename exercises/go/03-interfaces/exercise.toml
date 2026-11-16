@@ -1,0 +1,91 @@
+title = "Type switches → interfaces"
+difficulty = 2
+files = ["payments.go"]
+concepts = ["interfaces", "implicit implementation", "polymorphism", "struct types", "constructors"]
+
+brief = """
+`payments.go` models card, PayPal and crypto payments with one `Payment` struct that has a
+`kind` string and a field for every possible method (most of them empty for any given
+payment). `Fee()` and `Describe()` each `switch` on `kind` and `panic` if it's something odd.
+
+Give each payment method its own type:
+
+- make `Payment` an **interface** with `Amount()`, `Fee()` and `Describe()`
+- create `Card`, `PayPal` and `Crypto` structs that hold only their own fields
+- each type implements the methods for itself; no `kind`, no `switch`, no `panic`
+- keep `NewCard`, `NewPayPal`, `NewCrypto` and `Total` working as before
+"""
+
+lesson = """
+An **interface** in Go lists methods. Any type that has those methods satisfies it
+automatically. There's no `implements` keyword.
+
+    type Shape interface {
+        Area() float64
+    }
+
+    type Square struct{ side float64 }
+    func (s Square) Area() float64 { return s.side * s.side }
+
+    var s Shape = Square{2}   // fine: Square has Area()
+
+Code written against `Shape` works with any shape, including ones written later by someone
+else. That's **polymorphism**.
+
+Compare that with a `kind` string: every function has to know every kind, the compiler can't
+tell you when you forgot one (so you `panic` at runtime), and each struct carries fields that
+don't apply to it.
+
+**Constructors returning interfaces.** `func NewCard(...) Payment { return Card{...} }`
+lets callers keep working with `Payment` while the concrete type stays an implementation detail.
+
+**Sharing code** between implementations doesn't need inheritance: a plain helper function
+that takes the interface works great.
+"""
+
+hints = [
+    "Rename the existing struct out of the way first, then declare `type Payment interface { Amount() float64; Fee() float64; Describe() string }`.",
+    "Create three small structs: `type Card struct { amount float64; last4 string }`, and likewise PayPal (email) and Crypto (wallet). Make each constructor return its struct (with `Payment` as the return type).",
+    "Move each `case` body into a method on its type, e.g. `func (c Card) Fee() float64 { return 0.30 + c.amount*0.029 }`. Each type also needs a one-line `Amount()`.",
+    "The three Describe formats share `\"%s: $%.2f (fee $%.2f)\"`. Write `func describe(label string, p Payment) string` and call it from each Describe. `Total` doesn't need to change at all!",
+]
+
+debrief = """
+`Total` didn't change. It never cared *what* a payment was, only that it could report an
+amount and a fee. That's the whole point of an interface: code depends on *behaviour*, not on
+concrete types.
+
+Adding Apple Pay is now: a new struct, three methods, one constructor. Nothing existing is
+edited, and if you forget a method, the compiler tells you (instead of a panic in production).
+"""
+
+[[checks]]
+type = "require"
+pattern = 'type\s+Payment\s+interface'
+goal = "Payment is an interface"
+message = "Declare `type Payment interface { ... }`."
+
+[[checks]]
+type = "forbid"
+pattern = '\bswitch\b'
+goal = "No switch on payment kind"
+message = "Each type implements its own methods instead:"
+
+[[checks]]
+type = "forbid"
+pattern = '\bkind\b'
+goal = "No `kind` field"
+message = "The type itself says what kind it is:"
+
+[[checks]]
+type = "forbid"
+pattern = '\bpanic\('
+goal = "No runtime panics for impossible kinds"
+message = "With interfaces the compiler rules these out:"
+
+[[checks]]
+type = "max_count"
+pattern = '\(fee \$'
+max = 1
+goal = "The description format is written once"
+message = "Share the formatting in a helper."

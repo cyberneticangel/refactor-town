@@ -1,0 +1,85 @@
+title = "Replace switch statements with a lookup of behaviours"
+difficulty = 2
+files = ["shapes.mjs"]
+concepts = ["objects", "functions as values", "classes", "polymorphism", "open/closed principle"]
+
+brief = """
+`shapes.mjs` computes area, perimeter and a description for circles, rectangles and
+triangles. Each function has its own `switch (shape.kind)`, so the knowledge "how a circle
+works" is smeared across three places. Adding a hexagon means editing every switch and
+hoping you didn't miss one.
+
+Gather each shape's behaviour in one place:
+
+- build a single object (or classes) where each kind maps to its `area` and `perimeter`
+- have `area`, `perimeter` and `describe` look the shape's kind up there
+- keep throwing `Error("unknown shape: <kind>")` for kinds you don't know
+"""
+
+lesson = """
+**Functions are values** in JavaScript. You can store them in objects:
+
+    const greeters = {
+      english: (name) => `Hello, ${name}`,
+      spanish: (name) => `Hola, ${name}`,
+    };
+    greeters["spanish"]("Ada");   // "Hola, Ada"
+
+An object of functions keyed by "type" is a **dispatch table**. It replaces a `switch` that
+chooses behaviour by type.
+
+**Polymorphism** ("many shapes") is the general idea: callers ask for `area`, and each kind of
+thing knows how to answer. Classes are another way to get it:
+
+    class Circle {
+      constructor(r) { this.r = r; }
+      area() { return Math.PI * this.r ** 2; }
+    }
+
+Either way, adding a new kind means *adding* code in one place, not *editing* every switch.
+That's the **open/closed principle**: open for extension, closed for modification.
+
+**Destructuring** pulls fields out of objects: `({ width, height }) => width * height`.
+"""
+
+hints = [
+    "Create `const SHAPES = { circle: { area: (s) => ..., perimeter: (s) => ... }, rectangle: {...}, triangle: {...} };`. Copy the formulas out of the switch cases.",
+    "Write a helper that finds the behaviour or throws: `function behaviourFor(shape) { const b = SHAPES[shape.kind]; if (!b) throw new Error(\"unknown shape: \" + shape.kind); return b; }`.",
+    "Now `export const area = (shape) => behaviourFor(shape).area(shape);` and the same for perimeter. `describe` can call `area(shape)` and `perimeter(shape)` directly.",
+    "Careful with `Object.hasOwn`: `SHAPES[\"toString\"]` exists on every object! Use `Object.hasOwn(SHAPES, shape.kind)` in the helper so `{ kind: \"toString\" }` still throws (there's a test for it).",
+]
+
+debrief = """
+Three switches with three cases each became one table with three rows. The formulas didn't
+change; *where they live* did. Now "everything about circles" is in one place.
+
+Note the `toString` trap from the tests: a plain object inherits keys you never wrote. That's
+why some people use `Map` or `Object.create(null)` for dispatch tables. Little details like this
+are why tests matter during refactoring.
+"""
+
+[[checks]]
+type = "forbid"
+pattern = '\bswitch\s*\('
+goal = "No switch statements"
+message = "Replace the switches with a lookup of behaviours:"
+
+[[checks]]
+type = "forbid"
+pattern = 'kind\s*===?\s*["\x27]'
+goal = "No `kind === \"...\"` comparisons"
+message = "Look the kind up instead of comparing:"
+
+[[checks]]
+type = "max_count"
+pattern = 'Math\.PI'
+max = 2
+goal = "Each formula is written once"
+message = "The circle formulas appear in more than one place."
+
+[[checks]]
+type = "max_count"
+pattern = 'unknown shape'
+max = 1
+goal = "The unknown-shape error is raised in one place"
+message = "The same error is thrown from several functions."

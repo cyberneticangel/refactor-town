@@ -1,0 +1,108 @@
+title = "If-ladders → a lookup table of structs"
+difficulty = 1
+files = ["grades.c", "grades.h"]
+concepts = ["structs", "arrays", "const", "size_t", "pointers as array parameters", "static"]
+
+brief = """
+Four functions about exam grades. `letter_grade` and `grade_points` both walk the same
+`90 / 80 / 70 / 60` ladder, and `count_passing` repeats the `60` a third time. Change the
+boundary for a D and you must find every copy. Parameters are called `s` and `n`, and the
+array pointers aren't `const` even though nothing writes to them.
+
+Turn the rules into data:
+
+- one `static const` array of structs (min score, letter, points), the *grade table*
+- a helper that finds the band for a score; both grade functions use it
+- descriptive parameter names, `const int *` for read-only arrays, `size_t` for counts
+  (update `grades.h` to match)
+"""
+
+lesson = """
+**Structs** group values:
+
+    typedef struct {
+        int min_score;
+        char letter;
+        double points;
+    } GradeBand;
+
+**Arrays of structs** make tables. With `static const` the table lives for the whole program
+and can't be modified by accident:
+
+    static const GradeBand BANDS[] = {
+        {90, 'A', 4.0},
+        {80, 'B', 3.0},
+    };
+    static const size_t BAND_COUNT = sizeof BANDS / sizeof BANDS[0];
+
+`sizeof array / sizeof array[0]` counts the elements, so adding a row never requires
+updating a number.
+
+**static functions** are private to their file, which is great for helpers.
+
+**Pointers as parameters.** An array passed to a function becomes a pointer to its first
+element. `const int *scores` promises "I only read through this pointer", and the compiler
+enforces it.
+
+**size_t** is the unsigned type C uses for sizes and counts (`sizeof` returns it). Use it
+for lengths and indexes.
+
+**Returning a pointer into the table** (`const GradeBand *`) lets callers read any field of
+the band without copying.
+"""
+
+hints = [
+    "Rename first: `s` → `score`/`scores`, `n` → `count`, `t` → `total`, `c` → `passing`. Check.",
+    "Define the struct and table at the top of grades.c: `typedef struct { int min_score; char letter; double points; } GradeBand;` and `static const GradeBand GRADE_BANDS[] = { {90, 'A', 4.0}, ..., {0, 'F', 0.0} };`.",
+    "Write `static const GradeBand *band_for(int score)` that loops over the table and returns the first band with `score >= min_score`. Careful: negative scores must still get 'F', so return the last band if nothing matched. Then each grade function is one line: `return band_for(score)->letter;`.",
+    "Update signatures in BOTH files: `double gpa(const int *scores, size_t count)` and `size_t count_passing(const int *scores, size_t count)`. For passing, reuse the table: a score passes if its letter isn't 'F'. That kills the last copy of 60.",
+]
+
+debrief = """
+The grading policy is now a five-row table you could hand to a teacher to check. The code
+around it is generic: find the row, read a field.
+
+"Data-driven" design scales: a table with 12 grade bands (A+, A, A−…) needs zero new code.
+And `const` on the pointers is documentation the compiler checks for you: anyone calling
+`gpa` knows their array won't be modified.
+"""
+
+[[checks]]
+type = "max_count"
+pattern = '\b90\b'
+max = 1
+goal = "Each grade boundary is written once"
+message = "90 appears more than once."
+
+[[checks]]
+type = "max_count"
+pattern = '\b60\b'
+max = 1
+goal = "The passing mark is written once"
+message = "60 appears more than once."
+
+[[checks]]
+type = "require"
+pattern = 'static\s+const\s+\w+\s+\w+\s*\[\s*\]'
+goal = "Grades live in a static const table"
+message = "Create `static const GradeBand GRADE_BANDS[] = { ... };`."
+
+[[checks]]
+type = "forbid"
+pattern = '\(\s*(const\s+)?int\s*\*?\s*[a-z]\s*[,)]|\bint\s+\*?\s*[a-z]\s*[;=,)]'
+goal = "No single-letter names"
+message = "Rename these:"
+
+[[checks]]
+type = "require"
+pattern = 'const\s+int\s*\*'
+min = 4
+goal = "Read-only arrays are `const int *` (in .c and .h)"
+message = "Add `const` to the array parameters in both files."
+
+[[checks]]
+type = "require"
+pattern = '\bsize_t\b'
+min = 4
+goal = "Counts use size_t (in .c and .h)"
+message = "Use size_t for the counts."

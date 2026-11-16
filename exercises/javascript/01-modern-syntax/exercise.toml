@@ -1,0 +1,105 @@
+title = "From var-loops to map, filter, reduce"
+difficulty = 1
+files = ["cart.mjs"]
+concepts = ["const / let", "strict equality", "arrow functions", "array methods", "object shorthand"]
+
+brief = """
+`cartSummary(items)` totals a shopping cart. It was written in 2009-style JavaScript: `var`
+everywhere, a counting `for` loop, loose `==` comparisons, and `{ total: total }`.
+
+Modernize it:
+
+- `const` by default, `let` only when something must be reassigned, never `var`
+- strict equality (`===`), and no comparing to `true`
+- express the logic as a pipeline: `filter` the in-stock items, then `map` / `reduce` them
+- use shorthand properties: `{ total, count, names }`
+"""
+
+lesson = """
+**const, let, var.** `const x = 1` can't be reassigned. `let` can. `var` is the old keyword
+with confusing scoping rules. Modern code uses `const` unless it really needs `let`.
+
+**== vs ===.** `==` converts types before comparing (`"1" == 1` is true, `0 == ""` is true).
+`===` doesn't. Always use `===`. And `if (x.inStock)` already tests truthiness, so `== true`
+adds nothing.
+
+**Arrow functions** are compact function expressions:
+
+    const double = (n) => n * 2;
+    const add = (a, b) => a + b;
+
+**Array methods** each take a function and replace a common loop:
+
+    [1, 2, 3, 4].filter((n) => n % 2 === 0)       // [2, 4]       keep some
+    [1, 2, 3].map((n) => n * 10)                   // [10, 20, 30] transform each
+    [1, 2, 3].reduce((sum, n) => sum + n, 0)       // 6            combine into one
+
+Chaining them reads top to bottom like a recipe.
+
+**Shorthand properties.** If a variable has the same name as the key: `{ total }` means
+`{ total: total }`.
+"""
+
+hints = [
+    "Do the mechanical bits first: replace every `var` with `const` or `let`, and `items[i].inStock == true` with `items[i].inStock`. Check.",
+    "Build the filtered list once: `const inStock = items.filter((item) => item.inStock);`. Everything else only looks at in-stock items.",
+    "`const total = inStock.reduce((sum, item) => sum + item.price * item.qty, 0);`. Write `count` the same way with `item.qty`.",
+    "`const names = inStock.map((item) => item.name.toUpperCase());` and finish with `return { total, count, names };`. The for-loop can go.",
+]
+
+debrief = """
+The loop version said *how* to walk the array. The pipeline says *what* you want: the
+in-stock items, their total, their count, their names. Code that states intent is easier to
+check at a glance.
+
+`map`/`filter`/`reduce` exist in almost every modern language. You'll see them again as
+Rust iterators and Java streams.
+"""
+
+[[checks]]
+type = "forbid"
+pattern = '\bvar\b'
+goal = "No `var` (use const/let)"
+message = "Replace with const (or let if reassigned):"
+
+[[checks]]
+type = "forbid"
+pattern = '[^=!<>]==[^=]|!=[^=]'
+goal = "Strict equality only (=== / !==)"
+message = "Loose equality converts types in surprising ways:"
+
+[[checks]]
+type = "forbid"
+pattern = '===?\s*(true|false)\b'
+goal = "No comparisons to true/false"
+message = "Use the boolean directly:"
+
+[[checks]]
+type = "forbid"
+pattern = 'for\s*\('
+goal = "No counting for-loops"
+message = "Use filter/map/reduce instead:"
+
+[[checks]]
+type = "require"
+pattern = '\.filter\('
+goal = "Uses .filter()"
+message = "Keep only the in-stock items with .filter()."
+
+[[checks]]
+type = "require"
+pattern = '\.map\('
+goal = "Uses .map()"
+message = "Transform names with .map()."
+
+[[checks]]
+type = "require"
+pattern = '\.reduce\('
+goal = "Uses .reduce()"
+message = "Sum things with .reduce()."
+
+[[checks]]
+type = "forbid"
+pattern = '\b(\w+)\s*:\s*\1\b'
+goal = "Shorthand object properties"
+message = "`{ total: total }` can be `{ total }`:"

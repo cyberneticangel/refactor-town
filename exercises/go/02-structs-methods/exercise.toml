@@ -1,0 +1,99 @@
+title = "One giant function → a type with methods"
+difficulty = 2
+files = ["bank.go"]
+concepts = ["structs", "methods", "pointer receivers", "maps", "strings.Builder", "single responsibility"]
+
+brief = """
+`Run(script)` executes a tiny banking language (`open`, `deposit`, `withdraw`, `transfer`) and
+prints a report. All of it, the parsing, the validation, the money rules and the output, is
+crammed into one 90-line function. "No such account" is checked five times. Output is built
+with `out += ...` in a loop.
+
+Give the bank a real shape:
+
+- a `Bank` struct that owns the balances, with methods `Open`, `Deposit`, `Withdraw`,
+  `Transfer` that return `error`
+- a separate place that parses a line and calls the right method
+- build text with `strings.Builder` / `fmt.Fprintf` instead of `+=`
+- `Run` itself becomes a short loop
+
+Every message, line number and the sorted report must stay identical; the tests check
+error priority too (unknown account beats bad amount).
+"""
+
+lesson = """
+**Structs** group related data:
+
+    type Bank struct {
+        balances map[string]int
+    }
+
+**Methods** are functions attached to a type. The *receiver* goes before the name:
+
+    func (b *Bank) Deposit(name string, amount int) error {
+        b.balances[name] += amount
+        return nil
+    }
+
+Use a **pointer receiver** (`*Bank`) when the method changes the struct, otherwise
+it would modify a copy.
+
+**Constructors** are just functions by convention named `NewX`:
+
+    func NewBank() *Bank { return &Bank{balances: map[string]int{}} }
+
+**Single responsibility.** `Bank` knows money rules. A parser knows the text format. `Run`
+glues them. When each piece does one job you can test and change them separately.
+
+**Building strings.** `s += "..."` in a loop copies the whole string each time.
+`strings.Builder` appends efficiently, and `fmt.Fprintf(&sb, "line %d: %v\\n", n, err)`
+formats straight into it.
+"""
+
+hints = [
+    "Begin with the data: `type Bank struct { balances map[string]int }` and `func NewBank() *Bank`. Make Run use `bank := NewBank()` and `bank.balances` everywhere. Check.",
+    "Pull out `func (b *Bank) mustExist(name string) error`, which returns `fmt.Errorf(\"no such account: %s\", name)` or nil. Now each of the five copies is two lines.",
+    "Write the operations as methods returning `error`: `Open`, `Deposit`, `Withdraw` (checks funds), `Transfer` (can reuse Withdraw, then add to the other). Then `Run` only needs: on error, `fmt.Fprintf(&out, \"line %d: %v\\n\", i+1, err)`.",
+    "Move per-line parsing into `func (b *Bank) Execute(fields []string) error`. A table like `map[string]struct{ args int; usage string }` replaces the four usage checks. Order: unknown command → arg count → open, else check every account name exists → parse amount → call the method.",
+]
+
+debrief = """
+The behaviour is identical, but now there's a `Bank` you could reuse in a web server, a CLI or
+a test, without the text format attached. That separation (domain logic vs input/output) is
+one of the most valuable structural ideas in software.
+
+You also used a table (`commands`) for the per-command details: the same "code → data" move
+from Python's shipping exercise, now in Go.
+"""
+
+[[checks]]
+type = "require"
+pattern = 'type\s+Bank\s+struct'
+goal = "There is a Bank struct"
+message = "Define `type Bank struct { ... }` to own the balances."
+
+[[checks]]
+type = "require"
+pattern = 'func\s*\(\s*\w+\s+\*Bank\s*\)\s*(Open|Deposit|Withdraw|Transfer)\('
+min = 4
+goal = "Open, Deposit, Withdraw and Transfer are methods on *Bank"
+message = "Add pointer-receiver methods for each operation."
+
+[[checks]]
+type = "max_count"
+pattern = 'no such account'
+max = 1
+goal = "\"no such account\" is checked in one place"
+message = "The existence check is duplicated."
+
+[[checks]]
+type = "forbid"
+pattern = '\w+\s*\+=\s*("|\w+\s*\+\s*")'
+goal = "No string building with +="
+message = "Use strings.Builder / fmt.Fprintf:"
+
+[[checks]]
+type = "max_function_lines"
+max = 35
+goal = "Every function is 35 lines or fewer"
+message = "Split the big function up:"

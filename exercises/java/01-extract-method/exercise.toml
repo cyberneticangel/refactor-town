@@ -1,0 +1,102 @@
+title = "Extract method & name the magic numbers"
+difficulty = 1
+files = ["Invoice.java"]
+concepts = ["methods", "static final constants", "private helpers", "single source of truth", "ternary operator"]
+
+brief = """
+`Invoice.render()` is a 35-line method that does everything: computes each line with a bulk
+discount, sums a subtotal, applies tax, decides shipping, and formats it all. Then `total()`
+does all the arithmetic *again*, with the same magic numbers (`0.9`, `0.0825`, `7.99`, `100`).
+If the tax rate changes, someone will update one copy and not the other.
+
+Break it apart:
+
+- turn every magic number into a `private static final` constant
+- extract small private methods (`lineTotal`, `subtotal`, `tax`, `shipping`, ...) used by
+  **both** `render()` and `total()`
+- keep `render()` about formatting only
+
+The rendered text and totals must not change. (`LineItem.java` is provided; don't edit it.)
+"""
+
+lesson = """
+**Methods** in Java live inside classes. `private` ones are helpers the outside world can't
+see, perfect for breaking up a long method:
+
+    private double tax() {
+        return subtotal() * TAX_RATE;
+    }
+
+**Constants** are `static final` fields: `static` means "belongs to the class, not each
+object", `final` means "can't be reassigned". Name them in UPPER_SNAKE_CASE:
+
+    private static final double TAX_RATE = 0.0825;
+
+**Extract method** is the most-used refactoring in any IDE: select some lines, give them a
+name, call the name instead. Each method should do one thing you can describe in one short
+sentence.
+
+**Single source of truth.** When two methods compute the same thing, extract that thing and
+have both call it. Then they *can't* disagree.
+
+**Ternary**: `condition ? a : b` is an expression form of if/else, handy for short choices.
+
+**Records.** `LineItem` is a `record`, a compact immutable data class. `item.quantity()` reads
+its field.
+"""
+
+hints = [
+    "Constants first: `private static final double TAX_RATE = 0.0825;`, plus BULK_QUANTITY (10), BULK_DISCOUNT (0.10), FREE_SHIPPING_FROM (100), SHIPPING_FEE (7.99). Replace the literals in both methods. Check.",
+    "Extract `private static double lineTotal(LineItem item)` (quantity × price, minus the bulk discount). Both `render()` and `total()` can call it. Also `private static boolean isBulk(LineItem item)`.",
+    "Then `private double subtotal()` (sum of lineTotal over items), `tax()` and `shipping()` (0 for empty invoices or subtotal ≥ FREE_SHIPPING_FROM). Now `total()` is a single line: `return subtotal() + tax() + shipping();`.",
+    "Finish `render()` with formatting helpers: `formatLine(LineItem)` for the item rows and `formatSummary(String label, double amount)` for the four `%-10s %10.2f%n` lines. Then render is ~7 lines.",
+]
+
+debrief = """
+`total()` went from 15 lines to one, and `render()` became a description of the invoice's
+*layout*. More importantly, the business rules (tax, bulk, shipping) now exist exactly once.
+The two methods can never drift apart again.
+
+Did you notice `subtotal()` is now computed several times? For an invoice that's irrelevant.
+Clarity first; optimise only when measurements say so.
+"""
+
+[[checks]]
+type = "max_count"
+pattern = '0\.0825'
+max = 1
+goal = "The tax rate is written once"
+message = "Make it a constant."
+
+[[checks]]
+type = "max_count"
+pattern = '7\.99'
+max = 1
+goal = "The shipping fee is written once"
+message = "Make it a constant."
+
+[[checks]]
+type = "forbid"
+pattern = '\*\s*0\.9\b'
+goal = "No unexplained `* 0.9`"
+message = "Name the bulk discount:"
+
+[[checks]]
+type = "require"
+pattern = 'static\s+final\s+\w+\s+[A-Z_]+\s*='
+min = 3
+goal = "Business rules are named constants"
+message = "Add `private static final` constants."
+
+[[checks]]
+type = "max_function_lines"
+max = 12
+goal = "Every method is 12 lines or fewer"
+message = "Extract smaller methods:"
+
+[[checks]]
+type = "max_count"
+pattern = 'for\s*\('
+max = 1
+goal = "The item loop isn't duplicated between render() and total()"
+message = "Loop over the items in one shared helper, not in both methods."

@@ -1,0 +1,102 @@
+title = "Escape callback hell with async/await"
+difficulty = 2
+files = ["dashboard.mjs"]
+concepts = ["asynchronous code", "callbacks", "promises", "async / await", "Promise.all", "promisify"]
+
+brief = """
+`loadDashboard(userId)` fetches a user, their orders, and every product in those orders from
+a (pretend) slow API in `api.mjs`. The API uses old-school callbacks, so the code drifts
+rightwards into a "pyramid of doom", juggles a manual `pending` counter, and repeats
+`if (err) { reject(err); return; }` at every level.
+
+Rewrite `dashboard.mjs` with `async`/`await`:
+
+- convert the callback functions to promise-returning ones with `promisify` from `node:util`
+- make `loadDashboard` an `async function` and `await` each step
+- fetch all products *in parallel* with `Promise.all`
+- let errors propagate naturally (no manual `reject`)
+
+Don't edit `api.mjs`; the tests use their own copy.
+"""
+
+lesson = """
+**Why async?** Network calls take time. Rather than freezing the program, JavaScript starts
+the request and continues; you're told later when the result arrives.
+
+**Callbacks** were the first way to be told: pass a function to call later. Nest a few and
+you get the pyramid in `dashboard.mjs`.
+
+**Promises** represent "a value that will exist later". **async/await** let you write
+promise code that reads top-to-bottom:
+
+    async function loadName(id) {
+      const user = await getUserAsync(id);  // pauses here without blocking
+      return user.name;                       // async functions always return a promise
+    }
+
+If an awaited promise fails, `await` *throws*, and an async function that throws returns a
+rejected promise. So errors flow up on their own.
+
+**promisify** converts a callback-style `fn(args..., (err, result) => ...)` into one that
+returns a promise:
+
+    import { promisify } from "node:util";
+    const getUserAsync = promisify(getUser);
+
+**Promise.all** waits for many promises at once, in parallel, and keeps their order:
+
+    const results = await Promise.all(ids.map((id) => fetchThing(id)));
+"""
+
+hints = [
+    "At the top: `import { promisify } from \"node:util\";` and create `const fetchUser = promisify(getUser);` (same for orders and products).",
+    "Change the signature to `export async function loadDashboard(userId)`. Then: `const user = await fetchUser(userId);` and `const orders = await fetchOrders(user.id);`.",
+    "Fetch products in parallel: `const products = await Promise.all(orders.map((order) => fetchProduct(order.productId)));`. They come back in the same order as `orders`.",
+    "Zip them together: `const lines = orders.map((order, i) => ({ title: products[i].title, qty: order.qty, cost: products[i].price * order.qty }));`. Return `{ name: user.name, lines, total }` where total is a reduce. No `new Promise`, no `reject`.",
+]
+
+debrief = """
+Count the lines you deleted: the `pending` counter, every `if (err) reject`, the `new Promise`
+wrapper. `async`/`await` didn't make the program faster; it made the *shape* of the code match
+the shape of the idea: get user, then orders, then all products at once.
+
+The same model (async functions, await, run-in-parallel helpers) exists in Python (`asyncio`),
+Rust (`.await`), C# and Kotlin. You've learned it once for all of them.
+"""
+
+[[checks]]
+type = "require"
+pattern = 'async\s+function\s+loadDashboard'
+goal = "loadDashboard is an async function"
+message = "Declare it as `export async function loadDashboard(userId)`."
+
+[[checks]]
+type = "require"
+pattern = '\bawait\b'
+min = 3
+goal = "Each step is awaited"
+message = "Use `await` for the user, the orders and the products."
+
+[[checks]]
+type = "require"
+pattern = 'Promise\.all\('
+goal = "Products are fetched in parallel with Promise.all"
+message = "Collect all product fetches and `await Promise.all(...)`."
+
+[[checks]]
+type = "forbid"
+pattern = 'new\s+Promise\b'
+goal = "No hand-built `new Promise`"
+message = "promisify + async functions make this unnecessary:"
+
+[[checks]]
+type = "forbid"
+pattern = '\breject\(|\bpending\b'
+goal = "No manual reject() or pending counters"
+message = "Let errors and completion flow through await:"
+
+[[checks]]
+type = "max_depth"
+max = 3
+goal = "Nesting is at most 3 levels"
+message = "The callback pyramid should be gone."

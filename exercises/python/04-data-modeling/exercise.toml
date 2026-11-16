@@ -1,0 +1,96 @@
+title = "Parallel lists → objects"
+difficulty = 2
+files = ["inventory.py"]
+concepts = ["classes", "dataclasses", "dictionaries", "comprehensions", "properties"]
+
+brief = """
+`Inventory` tracks a shop's stock. Internally it keeps three *parallel lists* (`names`,
+`prices`, `qtys`) where position 3 in each list describes the same product. One misplaced
+`append` and every product after it is silently wrong.
+
+Restructure the data so each product is one object:
+
+- create an `Item` dataclass with `name`, `price` and `qty`
+- store items in a dictionary keyed by name (lookups become instant and obvious)
+- replace the index loops with loops/comprehensions over `Item`s
+
+The public methods (`add`, `restock`, `total_value`, `low_stock`, `most_valuable`) must behave
+exactly as before.
+"""
+
+lesson = """
+**Classes** bundle data with the code that works on it. A **dataclass** is a class that's
+mostly data, and Python writes the boring parts (`__init__`, `__repr__`, `__eq__`) for you:
+
+    from dataclasses import dataclass
+
+    @dataclass
+    class Item:
+        name: str
+        price: float
+        qty: int
+
+        @property
+        def value(self):
+            return self.price * self.qty
+
+    widget = Item("widget", 2.5, 10)
+    widget.qty += 5
+    widget.value          # 37.5. A @property is read like an attribute.
+
+**Dictionaries** map keys to values. Keyed by name, finding a product is `self.items[name]`
+with no searching, and `name in self.items` checks existence.
+
+    self.items = {}                       # name -> Item
+    self.items["widget"] = widget
+    for item in self.items.values(): ...
+
+**max with a key.** `max(things, key=some_function)` returns the thing with the biggest
+`some_function(thing)`. `default=None` handles an empty collection.
+"""
+
+hints = [
+    "Add `from dataclasses import dataclass` and define `Item` above `Inventory`. Don't touch Inventory yet. Check (still green).",
+    "In `__init__`, replace the three lists with `self.items = {}`. Then fix each method one at a time: `add` becomes `self.items[name] = Item(name, price, qty)` after the duplicate check `if name in self.items`.",
+    "`restock`: `if name not in self.items: raise KeyError(name)` then `self.items[name].qty += amount`. `total_value`: `sum(item.price * item.qty for item in self.items.values())`.",
+    "Give Item a `value` property. Then `most_valuable` is `max(self.items.values(), key=lambda item: item.value, default=None)` and return its `.name` if it isn't None. `low_stock` is a list comprehension with an `if`.",
+]
+
+debrief = """
+"Parallel arrays" is a classic smell: the *relationship* between values (this price belongs to
+this name) lived only in your head. Now it lives in the code, as an `Item`.
+
+Choosing the right data structure often deletes more code than any clever algorithm.
+Notice how `restock` stopped needing to *search*: the dictionary made the question
+"where is widget?" disappear.
+"""
+
+[[checks]]
+type = "require"
+pattern = '@dataclass'
+goal = "Products are modelled with a dataclass"
+message = "Define `@dataclass class Item:` with name, price and qty."
+
+[[checks]]
+type = "forbid"
+pattern = 'self\.(names|prices|qtys)\b'
+goal = "No parallel lists"
+message = "These parallel lists should become Item objects:"
+
+[[checks]]
+type = "forbid"
+pattern = 'range\(\s*len\('
+goal = "No index-based loops"
+message = "Loop over items, not positions:"
+
+[[checks]]
+type = "forbid"
+pattern = '\.index\('
+goal = "No searching lists by position"
+message = "A dict keyed by name makes `.index()` unnecessary:"
+
+[[checks]]
+type = "max_function_lines"
+max = 8
+goal = "Every method is 8 lines or fewer"
+message = "Some methods are still long:"

@@ -1,0 +1,109 @@
+title = "Exceptions and resources done right"
+difficulty = 3
+files = ["config.py"]
+concepts = ["exceptions", "try / except", "with statements", "enumerate", "helper functions"]
+
+brief = """
+`read_settings(path)` parses a simple `key = value` config file. It handles errors, sort of:
+a bare `except:` catches *everything* (even Ctrl-C), success is tracked with a manual `ok`
+flag, the file is closed by hand (and leaks if anything throws in between), and line numbers
+are counted manually.
+
+Make the error handling honest and the resource handling automatic:
+
+- open the file with a `with` block so it always closes
+- catch only the exception you mean (`OSError`) and chain it with `raise ... from`
+- drop the `== True` / `== False` comparisons and the `ok` flag
+- count lines with `enumerate`
+- move "turn a string into an int/bool/str" into its own small function
+"""
+
+lesson = """
+**Exceptions** are how Python reports "this can't continue". You raise them, and callers can
+catch them:
+
+    try:
+        number = int(text)
+    except ValueError:
+        number = None
+
+Always name the exception you expect. A bare `except:` also swallows `KeyboardInterrupt`,
+typos (`NameError`) and bugs you'd *want* to see.
+
+**Chaining.** When translating a low-level error into your own, keep the original:
+
+    except OSError as err:
+        raise ConfigError(f"cannot open {path}") from err
+
+The traceback then shows both, which is invaluable when debugging.
+
+**with** guarantees cleanup, even if an exception flies out of the block:
+
+    with open(path) as f:
+        text = f.read()
+    # f is closed here, no matter what
+
+**enumerate** gives you a counter alongside each item:
+
+    for line_number, line in enumerate(lines, start=1): ...
+
+**Truthiness.** `if is_int == True:` is just `if is_int:`. Comparing to True/False is noise.
+"""
+
+hints = [
+    "Start with the file: `try: with open(path) as f: lines = f.readlines()` then `except OSError as err: raise ConfigError(\"cannot open \" + path) from err`. That deletes the `ok`/`error` flags and both `f.close()` calls.",
+    "Replace the manual `n = n + 1` counter with `for n, line in enumerate(lines, start=1):`. The error message format must stay `line N: expected key=value`.",
+    "Write `def parse_value(text):`. Inside, `try: return int(text) except ValueError: pass`, then check the lowered text against `(\"true\", \"yes\")` and `(\"false\", \"no\")`, and finally return the text unchanged.",
+    "With `parse_value`, the loop body is: skip blank/comment lines, raise if `\"=\" not in line`, `key, value = line.split(\"=\", 1)`, `settings[key.strip()] = parse_value(value.strip())`.",
+]
+
+debrief = """
+Error handling is part of a function's *behaviour*, and the tests checked it: the right
+exception type, the right message, the line number.
+
+The `with` statement is Python's version of a pattern every language has: Go's `defer`,
+Rust's `Drop`, Java's try-with-resources, C's `goto cleanup`. "Acquire, then guarantee
+release" is one of the deep ideas in programming. You'll meet it again in the C track.
+"""
+
+[[checks]]
+type = "forbid"
+pattern = 'except\s*:'
+goal = "No bare `except:`"
+message = "Catch a specific exception type:"
+
+[[checks]]
+type = "require"
+pattern = 'with\s+open\('
+goal = "The file is opened with a `with` block"
+message = "Use `with open(path) as f:` so the file always closes."
+
+[[checks]]
+type = "forbid"
+pattern = '\.close\(\)'
+goal = "No manual close() calls"
+message = "`with` closes the file for you:"
+
+[[checks]]
+type = "require"
+pattern = 'raise\s+ConfigError\(.*\)\s+from\s+\w+'
+goal = "Low-level errors are chained with `raise ... from`"
+message = "Keep the original OSError: `raise ConfigError(...) from err`."
+
+[[checks]]
+type = "forbid"
+pattern = '==\s*(True|False)\b'
+goal = "No comparisons to True/False"
+message = "Use the value directly (`if ok:` / `if not ok:`):"
+
+[[checks]]
+type = "require"
+pattern = '\benumerate\('
+goal = "Line numbers come from enumerate()"
+message = "Let `enumerate(lines, start=1)` count for you."
+
+[[checks]]
+type = "max_function_lines"
+max = 18
+goal = "Every function is 18 lines or fewer"
+message = "Extract value parsing into its own function:"

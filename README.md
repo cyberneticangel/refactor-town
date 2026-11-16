@@ -277,3 +277,13 @@ exercise has a problem.
 - **One idea, many languages.** Concepts repeat across tracks on purpose.
 - **There's no single right answer.** The reference solution is *a* good answer. If yours passes
   and differs, compare the trade-offs. That comparison is learning too.
+
+---
+
+## License
+
+Refactor Town is licensed under the [GNU Affero General Public License v3.0](LICENSE).
+
+You're free to use, study, share and modify it, including the exercises. If you distribute a
+modified version, or run one as a network service that others use, you must make your
+source code available under the same license. See [`LICENSE`](LICENSE) for the full terms.
